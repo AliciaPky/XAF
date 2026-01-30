@@ -1,0 +1,16 @@
+You are a ModSecurity expert.
+
+Given the following HTTP request payloads that were clustered as similar SQL injection attempts, generate ONE ModSecurity rule that:
+
+- Uses SecRule
+- Matches the common pattern across these payloads
+- Minimizes false positives
+- Uses a unique rule ID above 1000000
+- Operates in phase 2
+- Denies the request with HTTP 403
+- Includes a descriptive msg
+
+Payloads:
+{{PAYLOADS}}
+
+Output ONLY the ModSecurity rule. No explanation.

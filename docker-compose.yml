@@ -1,0 +1,26 @@
+version: "3.8"
+services:
+  juice:
+    image: bkimminich/juice-shop:latest
+    container_name: juice
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+  nginx-modsec:
+    build:
+      context: .
+      dockerfile: docker/nginx-modsec/Dockerfile
+    container_name: nginx-modsec
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./modsec-config/modsecurity.conf:/etc/modsecurity/modsecurity.conf:ro
+      - ./modsec-config/nginx.conf:/usr/local/nginx/conf/nginx.conf:ro
+      - ./modsec-config/entrypoint.sh:/entrypoint.sh:ro
+      - ./modsec-logs:/var/log/modsecurity
+      - ./rules/crs:/etc/modsecurity/crs:ro
+      - ./rules/custom:/etc/modsecurity/custom-rules
+    depends_on:
+      - juice

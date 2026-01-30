@@ -1,0 +1,26 @@
+[
+  {
+    "uri": "/?id=%27%20OR%201%3D1%20--",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?id=%27%20OR%201%3D1%20--",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/",
+    "payload": null,
+    "rule_id": null,
+    "rule_msg": null
+  },
+  {
+    "uri": "/?id=%27%20OR%201%3D1%20--",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  }
+]
