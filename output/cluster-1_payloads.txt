@@ -1,0 +1,6 @@
+/?q=ALICIA_TEST_TRIGGER
+/?id=%27+OR+%271%27%3d%271
+/?id=1+UNION+SELECT+1%2c2%2c3--
+/?id=1+AND+SLEEP%282%29--
+/?q=%3cscript%3ealert%281%29%3c%2fscript%3e
+/?q=%22%3e%3cimg+src%3dx+onerror%3dalert%281%29%3e

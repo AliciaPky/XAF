@@ -1,16 +1,26 @@
 import pandas as pd
+import os
 
-INPUT = "./output/clustered_attacks.csv"
-OUTPUT = "./output/cluster0_payloads.txt"
+INPUT_FILE = "./output/clustered_attacks.csv"
+OUTPUT_DIR = "./output"
 
-df = pd.read_csv(INPUT)
+df = pd.read_csv(INPUT_FILE)
 
-cluster0 = df[df["cluster"] == 0]
+# Ensure payload column is clean
+df["payload"] = df["uri"].fillna("").astype(str)
+df = df[df["payload"].str.strip() != ""]
 
-payloads = cluster0["payload"].dropna().unique()
+# Get all unique cluster labels
+clusters = df["cluster"].unique()
 
-with open(OUTPUT, "w") as f:
-    for p in payloads[:10]:  # limit for prompt clarity
-        f.write(p + "\n")
+for cluster_id in clusters:
+    cluster_df = df[df["cluster"] == cluster_id]
+    
+    filename = f"cluster{cluster_id}_payloads.txt"
+    filepath = os.path.join(OUTPUT_DIR, filename)
+    
+    with open(filepath, "w") as f:
+        for payload in cluster_df["uri"]: #choose which column to extract
+            f.write(payload + "\n")
 
-print(f"[+] Extracted {len(payloads)} payloads from cluster 0")
+print("Cluster payload files generated.")

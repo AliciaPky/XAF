@@ -20,7 +20,10 @@ if missing:
 df = df[~df["payload"].str.contains("socket.io", na=False)]
 
 vectorizer = TfidfVectorizer(max_features=1000)
-X = vectorizer.fit_transform(df["payload"])
+# Clean payload column (avoid NaN crashing vectorizer)
+df["payload"] = df["payload"].fillna("").astype(str)
+df = df[df["payload"].str.strip() != ""]
+X = vectorizer.fit_transform(df["uri"]) #choose which column to extract
 
 dbscan = DBSCAN(
     eps=0.4,

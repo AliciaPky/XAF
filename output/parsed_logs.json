@@ -22,5 +22,77 @@
     "payload": "detected SQLi using libinjection.",
     "rule_id": "942100",
     "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?id=%27%20OR%201%3D1--",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?q=ALICIA_TEST_TRIGGER",
+    "payload": "Matched \"Operator `Contains' with parameter `ALICIA_TEST_TRIGGER' against variable `ARGS:q' (Value: `ALICIA_TEST_TRIGGER' )",
+    "rule_id": "1000100",
+    "rule_msg": "CUSTOM_RULE_TRIGGERED"
+  },
+  {
+    "uri": "/?id=%27+OR+1%3d1+--",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?id=%27+OR+1%3d1+--",
+    "payload": "Matched \"Operator `Rx' with parameter `'\\ OR\\ 1=1\\ \\-\\-' against variable `ARGS:id' (Value: `' OR 1=1 --' )",
+    "rule_id": "200000",
+    "rule_msg": "AUTO_GENERATED_RULE"
+  },
+  {
+    "uri": "/?id=1+OR+1%3d1",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?id=%27+OR+%271%27%3d%271",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?id=1%29+OR+%281%3d1",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?id=1+UNION+SELECT+1%2c2%2c3--",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?id=1+AND+SLEEP%282%29--",
+    "payload": "detected SQLi using libinjection.",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?q=%3cscript%3ealert%281%29%3c%2fscript%3e",
+    "payload": "detected XSS using libinjection.",
+    "rule_id": "941100",
+    "rule_msg": "XSS Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?q=%22%3e%3cimg+src%3dx+onerror%3dalert%281%29%3e",
+    "payload": "detected XSS using libinjection.",
+    "rule_id": "941100",
+    "rule_msg": "XSS Attack Detected via libinjection"
+  },
+  {
+    "uri": "/?id=%27+OR+1%3d1+--",
+    "payload": "Matched \"Operator `Rx' with parameter `'\\ OR\\ 1=1\\ \\-\\-' against variable `ARGS:id' (Value: `' OR 1=1 --' )",
+    "rule_id": "200003",
+    "rule_msg": "AUTO_GENERATED_RULE"
   }
 ]
