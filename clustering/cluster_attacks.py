@@ -23,7 +23,7 @@ vectorizer = TfidfVectorizer(max_features=1000)
 # Clean payload column (avoid NaN crashing vectorizer)
 df["payload"] = df["payload"].fillna("").astype(str)
 df = df[df["payload"].str.strip() != ""]
-X = vectorizer.fit_transform(df["uri"]) #choose which column to extract
+X = vectorizer.fit_transform(df["payload"]) #choose which column to extract
 
 dbscan = DBSCAN(
     eps=0.4,

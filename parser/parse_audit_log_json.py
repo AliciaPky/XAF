@@ -1,5 +1,6 @@
 import json
 import os
+import urllib.parse
 
 def process_audit_log(input_file, output_file):
     parsed_results = []
@@ -29,7 +30,7 @@ def process_audit_log(input_file, output_file):
                 # Construct the flat dictionary
                 entry = {
                     "uri": request.get("uri"),
-                    "payload": details.get("match"),
+                    "payload": extract_payload(request.get("uri")),
                     "rule_id": details.get("ruleId"),
                     "rule_msg": first_msg.get("message")
                 }
@@ -45,6 +46,17 @@ def process_audit_log(input_file, output_file):
         json.dump(parsed_results, out_f, indent=2)
     
     print(f"Successfully parsed {len(parsed_results)} entries into {output_file}")
+
+def extract_payload(uri):
+    if not uri or "?" not in uri:
+        return None
+    query = urllib.parse.urlparse(uri).query
+    params = urllib.parse.parse_qs(query)
+    if not params:
+        return None
+    # take the first query param's value, URL-decoded
+    first_value = list(params.values())[0][0]
+    return first_value
 
 # Execution
 process_audit_log('modsec-logs/audit.log', 'output/parsed_logs.json')
