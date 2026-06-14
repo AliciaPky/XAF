@@ -2,6 +2,10 @@ import json
 import os
 import urllib.parse
 
+# Messages emitted by rules WE generate. Excluding them stops the system from
+# training on its own output (feedback contamination).
+GENERATED_RULE_MSGS = {"AUTO_GENERATED_RULE", "CUSTOM_RULE_TRIGGERED"}
+
 def process_audit_log(input_file, output_file):
     parsed_results = []
 
@@ -27,14 +31,23 @@ def process_audit_log(input_file, output_file):
                 first_msg = messages[0] if messages else {}
                 details = first_msg.get("details", {})
 
-                # Construct the flat dictionary
+                payload = extract_payload(request.get("uri"))
+                rule_msg = first_msg.get("message")
+
+                # Skip requests with no extractable attack payload (e.g. "/").
+                if not payload:
+                    continue
+                # Skip hits from our own generated rules (feedback contamination).
+                if rule_msg in GENERATED_RULE_MSGS:
+                    continue
+
                 entry = {
                     "uri": request.get("uri"),
-                    "payload": extract_payload(request.get("uri")),
+                    "payload": payload,
                     "rule_id": details.get("ruleId"),
-                    "rule_msg": first_msg.get("message")
+                    "rule_msg": rule_msg
                 }
-                
+
                 parsed_results.append(entry)
             
             except json.JSONDecodeError:
