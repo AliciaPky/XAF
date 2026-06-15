@@ -14,9 +14,9 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /opt
 
 # 1) Build ModSecurity (libmodsecurity)
-RUN git clone --depth 1 -b v3/master https://github.com/SpiderLabs/ModSecurity.git /opt/ModSecurity \
+RUN git clone --depth 1 -b v3/master https://github.com/owasp-modsecurity/ModSecurity.git /opt/ModSecurity \
  && cd /opt/ModSecurity \
- && git submodule init && git submodule update \
+ && git submodule update --init --recursive \
  && ./build.sh && ./configure && make -j"$(nproc)" && make install
 
 # 2) Build modsecurity-nginx connector
