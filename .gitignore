@@ -1,2 +1,4 @@
 # Contains a plaintext OpenAI API key — never commit
 generator/run_openai.ps1
+rules/crs/
+modsec-logs/
