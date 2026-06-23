@@ -1,4 +1,11 @@
-# Contains a plaintext OpenAI API key — never commit
-generator/run_openai.ps1
 rules/crs/
-modsec-logs/
+ui/.venv/
+parser/venv/
+generator/__pycache__/
+targets/lms/__pycache__/
+ui/__pycache__/
+output/model_runs/
+output/prompts/
+.env
+.env.*
+!.env.example
