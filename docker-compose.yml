@@ -1,5 +1,34 @@
 version: "3.8"
 services:
+  # --- Vulnerable LMS target (primary) ---
+  db:
+    image: mysql:8.0
+    container_name: lms-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: lms
+    volumes:
+      - ./targets/lms/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - lms-db-data:/var/lib/mysql
+
+  lms:
+    build:
+      context: ./targets/lms
+      dockerfile: Dockerfile
+    container_name: lms
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: rootpass
+      DB_NAME: lms
+    ports:
+      - "5000:5000"   # direct access (no WAF) for baseline tests; local only
+    depends_on:
+      - db
+
+  # --- Alternate target kept for comparison runs ---
   juice:
     image: bkimminich/juice-shop:latest
     container_name: juice
@@ -23,4 +52,8 @@ services:
       - ./rules/crs:/etc/modsecurity/crs:ro
       - ./rules/custom:/etc/modsecurity/custom-rules
     depends_on:
+      - lms
       - juice
+
+volumes:
+  lms-db-data:
