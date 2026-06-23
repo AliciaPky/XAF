@@ -1,0 +1,6 @@
+streamlit>=1.40
+pandas
+scikit-learn
+requests
+regex
+streamlit-autorefresh
