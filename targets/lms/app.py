@@ -3,12 +3,14 @@ XAF — Deliberately Vulnerable LMS (test target)
 ================================================
 A minimal Learning Management System used as the WAF test target.
 
-!!! INTENTIONALLY VULNERABLE TO SQL INJECTION !!!
+!!! INTENTIONALLY VULNERABLE !!!
 This app exists ONLY to evaluate the XAF adaptive WAF. Do NOT deploy it on a
 public network without the WAF in front and inbound restricted to your own IP.
 
-Primary SQLi sink: the login authentication function (Objective 1 of the FYP).
-A secondary sink lives in the course search box.
+Injection sinks:
+  SQLi  — POST /login (username, password), GET /courses?q=
+  XSS   — GET /xss-search?q=  (reflects q unescaped via |safe)
+  SSTI  — POST /feedback       (renders user message as a Jinja2 template)
 """
 import os
 import time
@@ -90,7 +92,10 @@ LOGIN_BODY = """
 DASH_BODY = """
 <div class="card">
   <h2>Welcome, {{ fullname }}</h2>
-  <p>Role: {{ role }}</p>
+  <p>Role: {{ role }} &nbsp;|&nbsp;
+     <a href="{{ url_for('xss_search') }}">Course Search</a> &nbsp;|&nbsp;
+     <a href="{{ url_for('feedback') }}">Feedback</a>
+  </p>
   <h3>Your grades</h3>
   <table>
     <tr><th>Course</th><th>Code</th><th>Grade</th></tr>
@@ -111,6 +116,37 @@ DASH_BODY = """
     <tr><td>{{ c.code }}</td><td>{{ c.title }}</td><td>{{ c.instructor }}</td></tr>
     {% endfor %}
   </table>
+</div>
+"""
+
+
+XSS_BODY = """
+<div class="card">
+  <h2>Course Search</h2>
+  <form method="get" action="{{ url_for('xss_search') }}">
+    <input name="q" placeholder="Search courses" value="{{ q }}">
+    <button type="submit">Search</button>
+  </form>
+  {% if q %}
+  <p>Results for: {{ q|safe }}</p>
+  {% endif %}
+  <table>
+    <tr><th>Code</th><th>Title</th><th>Instructor</th></tr>
+    {% for c in results %}
+    <tr><td>{{ c.code }}</td><td>{{ c.title }}</td><td>{{ c.instructor }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+"""
+
+FEEDBACK_BODY = """
+<div class="card">
+  <h2>Submit Feedback</h2>
+  <form method="post" action="{{ url_for('feedback') }}">
+    <textarea name="message" rows="4" cols="50" placeholder="Your feedback..."></textarea><br>
+    <button type="submit">Submit</button>
+  </form>
+  {% if result %}<div class="card"><strong>Preview:</strong><br>{{ result }}</div>{% endif %}
 </div>
 """
 
@@ -231,6 +267,41 @@ def courses():
         catalogue=catalogue,
         q=q,
     )
+
+
+@app.route("/xss-search")
+def xss_search():
+    if "username" not in session:
+        return redirect(url_for("login"))
+    q = request.args.get("q", "")
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            # Safe parameterised query — the XSS sink is the unescaped reflection of q above.
+            cur.execute(
+                "SELECT code, title, instructor FROM courses WHERE title LIKE %s",
+                (f"%{q}%",),
+            )
+            results = cur.fetchall()
+    finally:
+        conn.close()
+    return render(XSS_BODY, q=q, results=results)
+
+
+@app.route("/feedback", methods=["GET", "POST"])
+def feedback():
+    if "username" not in session:
+        return redirect(url_for("login"))
+    result = None
+    if request.method == "POST":
+        message = request.form.get("message", "")
+        # !!! VULNERABLE: user-supplied string rendered as a Jinja2 template.
+        # This is the SSTI sink the WAF must protect.
+        try:
+            result = render_template_string(message)
+        except Exception as exc:
+            result = f"Template error: {exc}"
+    return render(FEEDBACK_BODY, result=result)
 
 
 @app.route("/logout")
