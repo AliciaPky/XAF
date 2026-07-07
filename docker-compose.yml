@@ -43,7 +43,7 @@ services:
     container_name: nginx-modsec
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8080:80"
     volumes:
       - ./modsec-config/modsecurity.conf:/etc/modsecurity/modsecurity.conf:ro
       - ./modsec-config/nginx.conf:/usr/local/nginx/conf/nginx.conf:ro
