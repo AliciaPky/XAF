@@ -1,6 +1,0 @@
-{"transaction":{"request":{"uri":"/test?id=1 OR 1=1"}},"messages":[{"message":"SQLi DETECTED","details":{"ruleId":"9421>
-{"transaction":{"request":{"uri":"/test?id=1 OR 1=1"}},"messages":[{"message":"SQLi DETECTED","details":{"ruleId":"9421>
-{"transaction":{"request":{"uri":"/test?id=1 OR 1=1"}},"messages":[{"message":"SQLi DETECTED","details":{"ruleId":"9421>
-{"transaction":{"request":{"uri":"/test?id=1 OR 1=1"}},"messages":[{"message":"SQLi DETECTED","details":{"ruleId":"9421>
-{"transaction":{"request":{"uri":"/test?id=1 OR 1=1"}},"messages":[{"message":"SQLi DETECTED","details":{"ruleId":"942100","data":"Matched Data: ' OR 1=1 --"}}]}
-
