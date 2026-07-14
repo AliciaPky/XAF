@@ -3,32 +3,17 @@ import os
 import re
 import urllib.parse
 
-# Enhancements over the original:
-#   #1 POST body          - parses application/x-www-form-urlencoded bodies
-#   #2 JSON body          - parses application/json bodies (Juice Shop login)
-#   #3 ALL parameters     - emits every param value, not just the first
-#   #4 normalization      - adds payload_norm (NUM/STR tokens) for CLUSTERING ONLY;
-#                           raw payload is kept untouched for rule generation
-#   #5 double URL-decode  - defeats double-encoded payloads (%2527 -> ' )
-#   #6 noise removal      - already done: payload is the bare value, no param name
-#   #7 metadata           - uri, rule_id, rule_msg, timestamp, unique_id,
-#                           http_code, and a blocked/bypassed status flag
-#
-# One row is emitted PER parameter value, so multi-field requests
-# (e.g. username=admin&password=' OR 1=1 --) produce one row each.
-
 INPUT_FILE  = "modsec-logs/audit.log"
 OUTPUT_FILE = "output/parsed_logs.json"
 
-# Messages emitted by rules WE generate. Excluding them stops the system from
+# Messages emitted by rules WE generate; excluding them stops the system from
 # training on its own output (feedback contamination).
 GENERATED_RULE_MSGS = {"AUTO_GENERATED_RULE", "CUSTOM_RULE_TRIGGERED"}
 
-# Response code that means the WAF blocked the request. Tune if your CRS
-# blocking action returns something other than 403.
+# Response code that means the WAF blocked the request.
 BLOCK_STATUS = 403
 
-# ----------------------------- decoding ------------------------------------
+
 def deep_unquote(value, max_passes=3):
     """URL-decode repeatedly to defeat double/triple encoding (%2527 -> ' )."""
     if value is None:
@@ -36,36 +21,29 @@ def deep_unquote(value, max_passes=3):
     prev = value
     for _ in range(max_passes):
         cur = urllib.parse.unquote_plus(prev)
-        if cur == prev:          # nothing changed -> fully decoded
+        if cur == prev:
             break
         prev = cur
     return prev
 
 
-# --------------------------- normalization ---------------------------------
 def normalize(payload):
     """Heuristic normalization used ONLY for clustering, never for rule-gen.
-
-    Collapses superficially-different-but-structurally-identical payloads
-    so they land in the same cluster:
+    Collapses structurally-identical payloads so they land in the same cluster:
         ' OR 1=1 --      ->  ' or num=num --
-        ' OR 999=999 --  ->  ' or num=num --
-        admin' OR '1'='1 ->  admin' or 'str'='num   (quoted -> STR, bare -> NUM)
+        admin' OR '1'='1 ->  admin' or 'str'='num
     """
     if not payload:
         return ""
     norm = payload.lower()
-    # quoted string literals -> 'STR' (do this before NUM so '1' becomes 'STR')
+    # quoted string literals -> 'STR' (before NUM so '1' becomes 'STR')
     norm = re.sub(r"'[^']*'", "'STR'", norm)
     norm = re.sub(r'"[^"]*"', '"STR"', norm)
-    # bare numeric literals -> NUM
     norm = re.sub(r"\b\d+\b", "NUM", norm)
-    # collapse whitespace
     norm = re.sub(r"\s+", " ", norm).strip()
     return norm
 
 
-# --------------------------- value extraction ------------------------------
 def values_from_query(uri):
     """Return all decoded query-string parameter values from a URI."""
     if not uri or "?" not in uri:
@@ -73,9 +51,9 @@ def values_from_query(uri):
     query = urllib.parse.urlparse(uri).query
     params = urllib.parse.parse_qs(query, keep_blank_values=False)
     out = []
-    for vals in params.values():          # iterate ALL params
+    for vals in params.values():
         for v in vals:
-            out.append(deep_unquote(v))    # double-decode
+            out.append(deep_unquote(v))
     return out
 
 
@@ -85,7 +63,6 @@ def values_from_body(body, content_type):
         return []
     ctype = (content_type or "").lower()
 
-    # JSON body -> pull every leaf string/number value
     if "application/json" in ctype or body.lstrip().startswith(("{", "[")):
         try:
             data = json.loads(body)
@@ -93,7 +70,6 @@ def values_from_body(body, content_type):
         except (json.JSONDecodeError, ValueError):
             pass  # fall through to form parsing
 
-    # form-urlencoded body (username=admin&password=' OR 1=1 --)
     params = urllib.parse.parse_qs(body, keep_blank_values=False)
     if params:
         out = []
@@ -119,6 +95,40 @@ def _json_leaves(obj):
             yield obj
 
 
+# CRS records the offending value in its "found within COLLECTION:name: <value>"
+# trailer (audit part H). For POST bodies not stored as request.body, this is the
+# only place the payload survives, so we recover it here.
+MATCHED_RE = re.compile(r"found within\s+\S+:\s(.+?)(?=\s*Matched Data:|$)", re.S)
+# "(Value: `<full value>' )" holds the COMPLETE value, surviving even when the
+# "found within" trailer is truncated ("396 characters omitted"). Prefer it.
+MATCH_VALUE_RE = re.compile(r"\(Value:\s*[`'\"]?(.*?)['`\"]?\s*\)\s*$", re.S)
+
+
+def _looks_truncated(val):
+    """An HTML/JS fragment cut mid-token: opens a tag ('<') but never closes it.
+    A truncation artifact (e.g. '<img src=x o'), not a real payload."""
+    v = val.strip()
+    return v.startswith("<") and ">" not in v
+
+
+def values_from_matched_data(messages):
+    """Recover the FULL offending value from CRS message trailers (audit part H).
+    Prefer the '(Value: ...)' field; fall back to the 'found within' trailer only
+    for values that don't look truncated."""
+    out = []
+    for m in messages or []:
+        det = m.get("details") or {}
+        mv = MATCH_VALUE_RE.search(det.get("match") or "")
+        if mv and mv.group(1).strip():
+            out.append(deep_unquote(mv.group(1).strip()))
+            continue
+        for fw in MATCHED_RE.finditer(det.get("data") or ""):
+            val = fw.group(1).strip()
+            if val and not _looks_truncated(val):
+                out.append(deep_unquote(val))
+    return out
+
+
 def header_value(headers, name):
     """Case-insensitive header lookup."""
     if not isinstance(headers, dict):
@@ -129,7 +139,6 @@ def header_value(headers, name):
     return None
 
 
-# ------------------------------- main --------------------------------------
 def process_audit_log(input_file, output_file):
     parsed_results = []
 
@@ -157,21 +166,22 @@ def process_audit_log(input_file, output_file):
             details   = first_msg.get("details", {})
             rule_msg  = first_msg.get("message")
 
-            # Skip hits from our own generated rules (feedback contamination).
             if rule_msg in GENERATED_RULE_MSGS:
                 continue
 
-            # ---- #7 metadata ----
             http_code = response.get("http_code")
             status    = "blocked" if http_code == BLOCK_STATUS else "bypassed"
 
-            # ---- gather candidate payloads (#1 #2 #3) ----
             content_type = header_value(request.get("headers"), "Content-Type")
             payloads = []
             payloads += values_from_query(request.get("uri"))
             payloads += values_from_body(request.get("body"), content_type)
+            # Fallback only when query+body yielded nothing: recover from the CRS
+            # matched-data. It's truncated, so avoid it when the full payload is
+            # already available (GET args) to keep fragments out of clustering.
+            if not payloads:
+                payloads += values_from_matched_data(messages)
 
-            # one row per non-empty, de-duplicated value
             seen = set()
             for payload in payloads:
                 if not payload or not payload.strip():
@@ -181,14 +191,14 @@ def process_audit_log(input_file, output_file):
                 seen.add(payload)
 
                 parsed_results.append({
-                    "payload":      payload,            # raw -> rule generation
-                    "payload_norm": normalize(payload), # #4 normalized -> clustering
+                    "payload":      payload,             # raw -> rule generation
+                    "payload_norm": normalize(payload),  # normalized -> clustering
                     "uri":          request.get("uri"),
                     "method":       request.get("method"),
                     "rule_id":      details.get("ruleId"),
                     "rule_msg":     rule_msg,
                     "http_code":    http_code,
-                    "status":       status,             # blocked | bypassed
+                    "status":       status,
                     "timestamp":    tx.get("time_stamp"),
                     "unique_id":    tx.get("unique_id"),
                 })
