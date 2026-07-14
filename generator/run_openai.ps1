@@ -1,8 +1,8 @@
 # Run the XAF rule generator against OpenAI models (one .conf per model), then
-# score them with compare_models.py alongside any local-model runs.
+# score them with compare_models.py if that scorer is present.
 #
-# Reuses generate_modsec_rules_llm.py unchanged: OpenAI is selected simply by
-# leaving XAF_BASE_URL UNSET (the generator then uses the default OpenAI client).
+# Reuses generate_modsec_rules_llm.py unchanged; the key is taken from the shell
+# env or, if unset, loaded from .env (same file the generator reads).
 #
 # Usage:
 #   $env:OPENAI_API_KEY = "sk-..."; .\generator\run_openai.ps1
@@ -10,20 +10,39 @@
 #   .\generator\run_openai.ps1 -DryRun        # build prompts only, no API calls
 param(
     [string[]]$Models = @("gpt-4o-mini", "gpt-4o"),
-    [switch]$DryRun
+    [switch]$DryRun 
 )
 
 $ErrorActionPreference = "Stop"
 
-# --- Require a real key, and make sure we do NOT inherit the Ollama base URL ---
-if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY) -or $env:OPENAI_API_KEY -eq "ollama") {
-    Write-Error "Set a real OpenAI key first:  `$env:OPENAI_API_KEY = 'sk-...'"
-    exit 1
-}
-if (Test-Path env:XAF_BASE_URL) { Remove-Item env:XAF_BASE_URL }   # unset => target OpenAI
+# --- Clear any stray base URL / placeholder key so we always target OpenAI ---
+if (Test-Path env:XAF_BASE_URL) { Remove-Item env:XAF_BASE_URL }
+if ($env:OPENAI_API_KEY -eq "ollama") { Remove-Item env:OPENAI_API_KEY }
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot  = Split-Path -Parent $scriptDir
+
+# --- If the key isn't set in this shell, load it from .env (same file the
+#     Python generator reads via load_dotenv). Keeps both runners consistent. ---
+if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
+    $envFile = Join-Path $repoRoot ".env"
+    if (Test-Path $envFile) {
+        foreach ($line in Get-Content $envFile) {
+            if ($line -match '^\s*OPENAI_API_KEY\s*=\s*(.+?)\s*$') {
+                $env:OPENAI_API_KEY = $matches[1].Trim().Trim('"').Trim("'")
+                break
+            }
+        }
+    }
+}
+
+# --- Require a real key (from the shell or from .env) ---
+if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY) -or
+    $env:OPENAI_API_KEY -eq "ollama" -or
+    $env:OPENAI_API_KEY -eq "sk-your-key-here") {
+    Write-Error "No real OpenAI key found. Set it with  `$env:OPENAI_API_KEY = 'sk-...'  or add OPENAI_API_KEY to .env"
+    exit 1
+}
 Push-Location $repoRoot
 try {
     $runDir = "output/model_runs"
@@ -48,8 +67,12 @@ try {
     }
 
     if (-not $DryRun) {
-        Write-Host "`nScoring models..." -ForegroundColor Cyan
-        python generator/compare_models.py
+        if (Test-Path "generator/compare_models.py") {
+            Write-Host "`nScoring models..." -ForegroundColor Cyan
+            python generator/compare_models.py
+        } else {
+            Write-Host "`nSkipping scoring: generator/compare_models.py not present." -ForegroundColor DarkYellow
+        }
     }
 }
 finally {
