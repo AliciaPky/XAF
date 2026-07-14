@@ -1,0 +1,5 @@
+payload,payload_norm,uri,method,rule_id,rule_msg,http_code,status,timestamp,unique_id,family,cluster
+admin'-- -,admin'-- -,/courses?q=admin%27--+-,GET,,,302,bypassed,Fri Jul 10 15:31:04 2026,178369746452.863884,sqli,-1
+' OR 1=1#,' or NUM=NUM#,/courses?q=%27+OR+1%3D1%23,GET,942100,SQL Injection Attack Detected via libinjection,403,blocked,Fri Jul 10 15:31:08 2026,178369746864.414919,sqli,0
+or 1=1,or NUM=NUM,/courses?q=or+1%3D1,GET,,,302,bypassed,Fri Jul 10 15:31:13 2026,178369747378.122987,sqli,0
+' OR '1'='1,'STR'NUM'STR'NUM,/courses?q=%27+OR+%271%27%3D%271,GET,942100,SQL Injection Attack Detected via libinjection,403,blocked,Fri Jul 10 15:31:22 2026,17836974820.554710,sqli,-1

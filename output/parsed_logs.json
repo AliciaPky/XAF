@@ -1,0 +1,50 @@
+[
+  {
+    "payload": "admin'-- -",
+    "payload_norm": "admin'-- -",
+    "uri": "/courses?q=admin%27--+-",
+    "method": "GET",
+    "rule_id": null,
+    "rule_msg": null,
+    "http_code": 302,
+    "status": "bypassed",
+    "timestamp": "Fri Jul 10 15:31:04 2026",
+    "unique_id": "178369746452.863884"
+  },
+  {
+    "payload": "' OR 1=1#",
+    "payload_norm": "' or NUM=NUM#",
+    "uri": "/courses?q=%27+OR+1%3D1%23",
+    "method": "GET",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection",
+    "http_code": 403,
+    "status": "blocked",
+    "timestamp": "Fri Jul 10 15:31:08 2026",
+    "unique_id": "178369746864.414919"
+  },
+  {
+    "payload": "or 1=1",
+    "payload_norm": "or NUM=NUM",
+    "uri": "/courses?q=or+1%3D1",
+    "method": "GET",
+    "rule_id": null,
+    "rule_msg": null,
+    "http_code": 302,
+    "status": "bypassed",
+    "timestamp": "Fri Jul 10 15:31:13 2026",
+    "unique_id": "178369747378.122987"
+  },
+  {
+    "payload": "' OR '1'='1",
+    "payload_norm": "'STR'NUM'STR'NUM",
+    "uri": "/courses?q=%27+OR+%271%27%3D%271",
+    "method": "GET",
+    "rule_id": "942100",
+    "rule_msg": "SQL Injection Attack Detected via libinjection",
+    "http_code": 403,
+    "status": "blocked",
+    "timestamp": "Fri Jul 10 15:31:22 2026",
+    "unique_id": "17836974820.554710"
+  }
+]

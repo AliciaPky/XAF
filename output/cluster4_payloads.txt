@@ -1,2 +1,0 @@
-' UNION SELECT username, password FROM Users-- -
-1; SELECT * FROM Users
