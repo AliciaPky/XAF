@@ -1,0 +1,4 @@
+# Keep container-mounted shell scripts LF-only so they run inside Linux
+# containers regardless of the host OS (CRLF breaks the #! interpreter line).
+*.sh text eol=lf
+modsec-config/entrypoint.sh text eol=lf
