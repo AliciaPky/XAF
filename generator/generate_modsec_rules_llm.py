@@ -1,19 +1,16 @@
 """
 XAF - LLM ModSecurity Rule Generator
 ------------------------------------
-Reads clustered SQLi payloads, fills the prompt template, calls an LLM,
-and writes ONE generalized ModSecurity rule per cluster to rules/experiments/
-as a CANDIDATE awaiting human approval (the WAF does not load that dir).
+Reads clustered payloads, fills the prompt template, calls an LLM, and writes
+ONE generalized ModSecurity rule per cluster to rules/experiments/ as a CANDIDATE
+awaiting human approval (the WAF does not load that dir).
 
-Each rule is now FUNCTIONALLY VALIDATED before it is written: the @rx regex
-is compiled and tested against every payload in the cluster (must match all)
-and against a benign sample set (must match none). If validation fails the
-generator re-prompts the LLM with the specific failures (retry loop), and if
-the cluster still can't be covered by a single rule it is split into
-attack-type subgroups and each subgroup is generated/validated separately.
+Each rule is functionally validated before it is written: the @rx regex must
+match every payload in the cluster and none of the benign samples. On failure the
+generator re-prompts with the specific failures, and if a single rule still can't
+cover the cluster it is split into attack-type subgroups validated separately.
 
-Targets the OpenAI API. Set OPENAI_API_KEY (in the shell or in .env) and,
-optionally, XAF_MODEL to choose the model (default: gpt-5.4-mini).
+Set OPENAI_API_KEY (shell or .env) and optionally XAF_MODEL (default gpt-5.4-mini).
 
 Usage:
   python generator/generate_modsec_rules_llm.py            # generate rules
@@ -28,43 +25,35 @@ import json
 import itertools
 import pandas as pd
 
-# Load OPENAI_API_KEY (and any XAF_* overrides) from a local .env if present.
-# .env is gitignored; never commit your real key. See .env.example for the keys.
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass  # python-dotenv optional; env vars still work without it
+    pass
 
-# ---------------- Config (override via environment variables) ----------------
+# Config (override via environment variables)
 INPUT_CSV       = os.getenv("XAF_INPUT_CSV", "./output/clustered_attacks.csv")
 PROMPT_FILE     = os.getenv("XAF_PROMPT", "./prompts/modsec_rule_prompt.txt")
-# Output is a CANDIDATE file OUTSIDE the WAF-loaded dir (rules/experiments/), so a
-# generated rule is NOT live until a human approves it in the Rule Approval gate
-# (which promotes it into rules/custom/). New IDs still start above everything
-# already deployed (starting_rule_id) so a promoted rule never collides.
+# Candidate file OUTSIDE the WAF-loaded dir; a rule is not live until approved.
 OUTPUT_FILE     = os.getenv("XAF_OUTPUT", "./rules/experiments/auto_rules.conf")
-PROMPT_LOG_DIR  = os.getenv("XAF_PROMPT_LOG", "./output/prompts")   # Change 4: traceability
-# The rules the WAF actually loads; new IDs must not collide with any of these.
+PROMPT_LOG_DIR  = os.getenv("XAF_PROMPT_LOG", "./output/prompts")
 DEPLOYED_RULES_GLOB = os.getenv("XAF_DEPLOYED_GLOB", "./rules/custom/*.conf")
 
 MODEL           = os.getenv("XAF_MODEL", "gpt-5.4-mini")
-API_KEY         = os.getenv("OPENAI_API_KEY", "")          # required; from shell env or .env
+API_KEY         = os.getenv("OPENAI_API_KEY", "")
 
-BASE_RULE_ID    = 1000000     # rule IDs start here; one per rule, guaranteed unique
-SKIP_NOISE      = True        # skip DBSCAN noise cluster (-1)
-MIN_CLUSTER_SIZE = 2          # need >=2 unique payloads to generalize
-MAX_RETRIES     = int(os.getenv("XAF_MAX_RETRIES", "5"))   # functional-validation retries per rule
+BASE_RULE_ID    = 1000000
+SKIP_NOISE      = True         # skip DBSCAN noise cluster (-1)
+MIN_CLUSTER_SIZE = 2           # need >=2 unique payloads to generalize
+MAX_RETRIES     = int(os.getenv("XAF_MAX_RETRIES", "5"))
 
-SYSTEM_PROMPT = (             # deterministic system prompt
+SYSTEM_PROMPT = (
     "You are a ModSecurity rule generation expert. "
     "Return only a single valid ModSecurity SecRule. "
     "Do not explain. Do not use markdown. Do not return code fences."
 )
 
 # Known-legitimate inputs the generated regex must NOT match (precision gate).
-# 'orange juice' and 'user@example.com' are real benign requests from the audit
-# log that bypassed CRS; the rest are common safe values. Extend as needed.
 BENIGN_SAMPLES = [
     "orange juice",
     "user@example.com",
@@ -78,8 +67,7 @@ BENIGN_SAMPLES = [
 
 def deployed_rule_ids(exclude_path=None):
     """Every rule ID already present in the WAF-loaded rules dir, so a new run
-    never reuses an ID that's already deployed (ModSecurity fatally errors on
-    duplicate IDs across loaded files)."""
+    never reuses a deployed ID (ModSecurity fatally errors on duplicates)."""
     ids = set()
     ex = os.path.abspath(exclude_path) if exclude_path else None
     for path in glob.glob(DEPLOYED_RULES_GLOB):
@@ -94,8 +82,7 @@ def deployed_rule_ids(exclude_path=None):
 
 
 def starting_rule_id():
-    """Begin IDs above the highest already-deployed rule (>= BASE_RULE_ID) so
-    regenerations never collide with rules ModSecurity already has loaded."""
+    """Begin IDs above the highest already-deployed rule (>= BASE_RULE_ID)."""
     used = [i for i in deployed_rule_ids(exclude_path=OUTPUT_FILE) if i >= BASE_RULE_ID]
     return max(used) + 1 if used else BASE_RULE_ID
 
@@ -115,14 +102,14 @@ def get_clusters(df):
     for cluster_id, group in df.groupby("cluster"):
         if SKIP_NOISE and int(cluster_id) == -1:
             continue
-        payloads = sorted(set(group["payload"]))   # dedupe within cluster
+        payloads = sorted(set(group["payload"]))
         if payloads:
             clusters[int(cluster_id)] = payloads
     return clusters
 
 
 def build_prompt(template, payloads, rule_id, feedback=None):
-    """Payloads embedded as JSON data + untrusted-input framing.
+    """Embed payloads as JSON data with untrusted-input framing.
     `feedback` carries validation failures back to the model on a retry."""
     payload_block = json.dumps(payloads, indent=2)
     prompt = template.replace("{{PAYLOADS}}", payload_block)
@@ -143,7 +130,6 @@ def build_prompt(template, payloads, rule_id, feedback=None):
 
 
 def call_llm(prompt, temperature=0):
-    """Send to the OpenAI chat endpoint and return the text."""
     from openai import OpenAI
     client = OpenAI(api_key=API_KEY)
     resp = client.chat.completions.create(
@@ -158,9 +144,8 @@ def call_llm(prompt, temperature=0):
 
 
 def _split_actions(s):
-    """Split a bare (unquoted) action list into individual actions. Treats both
-    commas and whitespace as separators but never splits inside a single-quoted
-    value, so `msg:'SQL Injection'` (space included) stays one token."""
+    """Split a bare (unquoted) action list on commas/whitespace, but never inside
+    a single-quoted value so `msg:'SQL Injection'` stays one token."""
     tokens, buf, in_quote = [], [], False
     for ch in s:
         if ch == "'":
@@ -179,28 +164,25 @@ def _split_actions(s):
 
 def normalize_actions(rule):
     """Ensure the SecRule action field is a single double-quoted, comma-separated
-    string. Models occasionally emit it bare (`id:.., phase:2, deny, ...`) or
-    space-separated (`id:.. phase:2 deny ...`); ModSecurity rejects both at load
-    time, which crash-loops nginx. Rules that are already quoted are left as-is.
-
-    Only the text AFTER the @rx operator's closing quote is touched, so commas or
-    spaces inside the regex itself are never disturbed."""
+    string. Models sometimes emit it bare or space-separated, which ModSecurity
+    rejects at load time (crash-looping nginx). Only the text after the @rx
+    operator's closing quote is touched, so the regex itself is never disturbed."""
     m = re.search(r"@rx\s", rule)
     if not m:
-        return rule                       # not an @rx rule; leave untouched
-    i = m.end()                           # walk to the operator's closing quote
+        return rule
+    i = m.end()
     while i < len(rule):
         if rule[i] == "\\" and i + 1 < len(rule):
-            i += 2                         # skip escaped pair (e.g. \")
+            i += 2
             continue
         if rule[i] == '"':
             break
         i += 1
     if i >= len(rule):
-        return rule                        # malformed operator; let validation catch it
+        return rule
     prefix, actions = rule[:i + 1], rule[i + 1:].strip()
     if not actions or actions.startswith('"'):
-        return rule                        # no actions, or already quoted -> trust it
+        return rule
     return f'{prefix} "{",".join(_split_actions(actions))}"'
 
 
@@ -210,8 +192,7 @@ def clean_rule(text, rule_id):
     if not text:
         return None
     text = re.sub(r"```[a-zA-Z]*", "", text).replace("```", "").strip()
-    # Safety net: some models emit JSON/Python-style double-escaped regex
-    # (e.g. \\s, \\b). ModSecurity .conf wants single backslashes, so collapse them.
+    # Collapse JSON/Python-style double-escaped regex (\\s) to single backslashes.
     text = text.replace("\\\\", "\\")
     m = re.search(r"SecRule", text)
     if not m:
@@ -223,42 +204,38 @@ def clean_rule(text, rule_id):
 
 
 def validate_rule(rule):
-    """Structural validation: the required tokens are present. This is a
-    cheap pre-check; functional_validate() proves the rule actually works."""
+    """Cheap structural pre-check that the required tokens are present."""
     if not rule:
         return False
     required = ["SecRule", "id:", "phase:", "deny"]
     return all(token in rule for token in required)
 
 
-# ----------------------- functional validation (the fix) -----------------------
-
 def extract_regex(rule):
-    """Pull the @rx pattern out of a SecRule. Stops at the first UNescaped
-    double-quote (the end of the operator argument) so patterns containing
-    \\" survive intact."""
+    """Pull the @rx pattern out of a SecRule, stopping at the first unescaped
+    double-quote so patterns containing \\" survive intact."""
     m = re.search(r"@rx\s+", rule)
     if not m:
         return None
     i, out = m.end(), []
     while i < len(rule):
         c = rule[i]
-        if c == "\\" and i + 1 < len(rule):     # keep escaped pair as-is
+        if c == "\\" and i + 1 < len(rule):
             out.append(rule[i:i + 2])
             i += 2
             continue
-        if c == '"':                            # unescaped quote ends the operator
+        if c == '"':
             break
         out.append(c)
         i += 1
     pat = "".join(out).strip()
-    pat = pat.replace('\\"', '"')               # ModSecurity \" -> literal " for the engine
+    pat = pat.replace('\\"', '"')
     return pat or None
 
 
 def compile_pattern(pat):
     """Compile with the PCRE-compatible `regex` module if available, else fall
-    back to `re` (which rejects mid-pattern (?i), so hoist it to a global flag)."""
+    back to `re` (hoisting mid-pattern (?i) to a global flag, which `re` requires)."""
     try:
         import regex as engine
         return engine.compile(pat)
@@ -269,8 +246,8 @@ def compile_pattern(pat):
 
 
 def functional_validate(rule, payloads, benign=BENIGN_SAMPLES):
-    """Compile the rule's regex and test it.
-    Returns (ok, missed_payloads, false_positives, error_message)."""
+    """Compile the rule's regex and test recall (matches all payloads) and
+    precision (matches no benign). Returns (ok, missed, false_positives, error)."""
     pat = extract_regex(rule)
     if not pat:
         return False, list(payloads), [], "could not find an @rx pattern in the rule"
@@ -278,8 +255,8 @@ def functional_validate(rule, payloads, benign=BENIGN_SAMPLES):
         rx = compile_pattern(pat)
     except Exception as e:
         return False, list(payloads), [], f"regex failed to compile: {e}"
-    missed = [p for p in payloads if not rx.search(p)]       # recall gate
-    false_pos = [b for b in benign if rx.search(b)]          # precision gate
+    missed = [p for p in payloads if not rx.search(p)]
+    false_pos = [b for b in benign if rx.search(b)]
     ok = not missed and not false_pos
     return ok, missed, false_pos, None
 
@@ -335,13 +312,10 @@ def generate_validated_rule(template, payloads, rule_id):
 
 
 def attack_signature(payload):
-    """Coarse attack-type label, used only to split a cluster that no single
-    rule can cover. Covers SQLi, XSS and SSTI sub-families so heterogeneous
-    XSS/SSTI clusters (e.g. script-tag + javascript: URI + event-handler) can be
-    split into coverable subgroups, not just SQLi ones."""
+    """Coarse attack-type label used only to split a cluster no single rule can
+    cover. Covers SQLi, XSS and SSTI sub-families."""
     s = payload.lower()
 
-    # --- XSS sub-families ---
     if "<script" in s or "</script" in s:
         return "xss_script"
     if "javascript:" in s:
@@ -353,7 +327,6 @@ def attack_signature(payload):
                                          "body", "details", "alert(")):
         return "xss_tag"
 
-    # --- SSTI sub-families ---
     if any(k in s for k in ("popen", "__import__", "subclasses",
                             "__globals__", "communicate", "os.system")):
         return "ssti_rce"
@@ -363,7 +336,6 @@ def attack_signature(payload):
     if any(d in s for d in ("{{", "${", "#{", "<%", "{%")):
         return "ssti_probe"
 
-    # --- SQLi sub-families ---
     if "union" in s:
         return "union"
     if any(k in s for k in ("sleep", "pg_sleep", "waitfor", "delay")):
@@ -385,7 +357,7 @@ def split_payloads(payloads):
 
 
 def save_trace(cluster_id, prompt, raw=None, rule=None):
-    """Save cluster -> prompt -> output -> rule chain for traceability."""
+    """Save the cluster -> prompt -> output -> rule chain for traceability."""
     os.makedirs(PROMPT_LOG_DIR, exist_ok=True)
     with open(f"{PROMPT_LOG_DIR}/cluster_{cluster_id}_prompt.txt", "w") as f:
         f.write(prompt)
