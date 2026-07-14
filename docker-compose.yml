@@ -28,14 +28,6 @@ services:
     depends_on:
       - db
 
-  # --- Alternate target kept for comparison runs ---
-  juice:
-    image: bkimminich/juice-shop:latest
-    container_name: juice
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-
   nginx-modsec:
     build:
       context: .
@@ -53,7 +45,6 @@ services:
       - ./rules/custom:/etc/modsecurity/custom-rules
     depends_on:
       - lms
-      - juice
 
 volumes:
   lms-db-data:
