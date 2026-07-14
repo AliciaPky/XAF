@@ -1,16 +1,18 @@
-# Run the XAF rule generator against OpenAI models (one .conf per model), then
-# score them with compare_models.py if that scorer is present.
+# Run the XAF rule generator against the chosen OpenAI model, writing the validated
+# rules to rules/experiments/auto_rules.conf as CANDIDATES awaiting approval (the WAF
+# does NOT load that dir). Approve them in the console's Rule Approval gate to promote
+# them into rules/custom/ and go live. Single-model workflow — settled on gpt-5.4-mini.
 #
 # Reuses generate_modsec_rules_llm.py unchanged; the key is taken from the shell
 # env or, if unset, loaded from .env (same file the generator reads).
 #
 # Usage:
 #   $env:OPENAI_API_KEY = "sk-..."; .\generator\run_openai.ps1
-#   .\generator\run_openai.ps1 -Models "gpt-4o-mini","gpt-4o","gpt-4.1"
-#   .\generator\run_openai.ps1 -DryRun        # build prompts only, no API calls
+#   .\generator\run_openai.ps1 -Models "gpt-5.4-mini"   # override the model
+#   .\generator\run_openai.ps1 -DryRun                  # build prompts only, no API calls
 param(
-    [string[]]$Models = @("gpt-4o-mini", "gpt-4o"),
-    [switch]$DryRun 
+    [string[]]$Models = @("gpt-5.4-mini"),
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,10 +53,13 @@ try {
     foreach ($m in $Models) {
         Write-Host "`n==================== $m ====================" -ForegroundColor Cyan
 
-        # Per-model output paths so runs never overwrite each other.
+        # Write candidates to rules/experiments/ (NOT loaded by the WAF). The
+        # generator overwrites this file each run and renumbers IDs above anything
+        # already deployed (starting_rule_id), so a rule can't collide once approved
+        # and promoted into rules/custom/.
         $safe = ($m -replace '[:/\\]', '_')
         $env:XAF_MODEL      = $m
-        $env:XAF_OUTPUT     = "rules/custom/auto_sqli.$safe.conf"
+        $env:XAF_OUTPUT     = "rules/experiments/auto_rules.conf"
         $env:XAF_PROMPT_LOG = "output/prompts/$safe"
         $log                = "$runDir/$safe.log"
 

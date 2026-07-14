@@ -2,7 +2,8 @@
 XAF - LLM ModSecurity Rule Generator
 ------------------------------------
 Reads clustered SQLi payloads, fills the prompt template, calls an LLM,
-and writes ONE generalized ModSecurity rule per cluster to rules/custom/.
+and writes ONE generalized ModSecurity rule per cluster to rules/experiments/
+as a CANDIDATE awaiting human approval (the WAF does not load that dir).
 
 Each rule is now FUNCTIONALLY VALIDATED before it is written: the @rx regex
 is compiled and tested against every payload in the cluster (must match all)
@@ -11,10 +12,8 @@ generator re-prompts the LLM with the specific failures (retry loop), and if
 the cluster still can't be covered by a single rule it is split into
 attack-type subgroups and each subgroup is generated/validated separately.
 
-Provider-agnostic (any OpenAI-compatible endpoint):
-  - Local Ollama (default here): XAF_BASE_URL=http://localhost:11434/v1
-                                 XAF_MODEL=qwen2.5-coder:14b
-  - OpenAI:                      set OPENAI_API_KEY, leave XAF_BASE_URL unset
+Targets the OpenAI API. Set OPENAI_API_KEY (in the shell or in .env) and,
+optionally, XAF_MODEL to choose the model (default: gpt-5.4-mini).
 
 Usage:
   python generator/generate_modsec_rules_llm.py            # generate rules
@@ -24,6 +23,7 @@ Usage:
 import os
 import re
 import sys
+import glob
 import json
 import itertools
 import pandas as pd
@@ -39,12 +39,17 @@ except ImportError:
 # ---------------- Config (override via environment variables) ----------------
 INPUT_CSV       = os.getenv("XAF_INPUT_CSV", "./output/clustered_attacks.csv")
 PROMPT_FILE     = os.getenv("XAF_PROMPT", "./prompts/modsec_rule_prompt.txt")
-OUTPUT_FILE     = os.getenv("XAF_OUTPUT", "./rules/custom/auto_sqli.conf")
+# Output is a CANDIDATE file OUTSIDE the WAF-loaded dir (rules/experiments/), so a
+# generated rule is NOT live until a human approves it in the Rule Approval gate
+# (which promotes it into rules/custom/). New IDs still start above everything
+# already deployed (starting_rule_id) so a promoted rule never collides.
+OUTPUT_FILE     = os.getenv("XAF_OUTPUT", "./rules/experiments/auto_rules.conf")
 PROMPT_LOG_DIR  = os.getenv("XAF_PROMPT_LOG", "./output/prompts")   # Change 4: traceability
+# The rules the WAF actually loads; new IDs must not collide with any of these.
+DEPLOYED_RULES_GLOB = os.getenv("XAF_DEPLOYED_GLOB", "./rules/custom/*.conf")
 
-MODEL           = os.getenv("XAF_MODEL", "qwen2.5-coder:14b")
-BASE_URL        = os.getenv("XAF_BASE_URL")                 # set for Ollama; None = OpenAI default
-API_KEY         = os.getenv("OPENAI_API_KEY", "ollama")     # "ollama" is a dummy accepted locally
+MODEL           = os.getenv("XAF_MODEL", "gpt-5.4-mini")
+API_KEY         = os.getenv("OPENAI_API_KEY", "")          # required; from shell env or .env
 
 BASE_RULE_ID    = 1000000     # rule IDs start here; one per rule, guaranteed unique
 SKIP_NOISE      = True        # skip DBSCAN noise cluster (-1)
@@ -69,6 +74,30 @@ BENIGN_SAMPLES = [
     "2024-01-15",
     "hello world",
 ]
+
+
+def deployed_rule_ids(exclude_path=None):
+    """Every rule ID already present in the WAF-loaded rules dir, so a new run
+    never reuses an ID that's already deployed (ModSecurity fatally errors on
+    duplicate IDs across loaded files)."""
+    ids = set()
+    ex = os.path.abspath(exclude_path) if exclude_path else None
+    for path in glob.glob(DEPLOYED_RULES_GLOB):
+        if ex and os.path.abspath(path) == ex:
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                ids.update(int(x) for x in re.findall(r"id:\s*(\d+)", f.read()))
+        except OSError:
+            pass
+    return ids
+
+
+def starting_rule_id():
+    """Begin IDs above the highest already-deployed rule (>= BASE_RULE_ID) so
+    regenerations never collide with rules ModSecurity already has loaded."""
+    used = [i for i in deployed_rule_ids(exclude_path=OUTPUT_FILE) if i >= BASE_RULE_ID]
+    return max(used) + 1 if used else BASE_RULE_ID
 
 
 def load_prompt_template():
@@ -114,9 +143,9 @@ def build_prompt(template, payloads, rule_id, feedback=None):
 
 
 def call_llm(prompt, temperature=0):
-    """Send to an OpenAI-compatible chat endpoint and return the text."""
+    """Send to the OpenAI chat endpoint and return the text."""
     from openai import OpenAI
-    client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_key=API_KEY)
+    client = OpenAI(api_key=API_KEY)
     resp = client.chat.completions.create(
         model=MODEL,
         temperature=temperature,
@@ -128,8 +157,56 @@ def call_llm(prompt, temperature=0):
     return resp.choices[0].message.content
 
 
+def _split_actions(s):
+    """Split a bare (unquoted) action list into individual actions. Treats both
+    commas and whitespace as separators but never splits inside a single-quoted
+    value, so `msg:'SQL Injection'` (space included) stays one token."""
+    tokens, buf, in_quote = [], [], False
+    for ch in s:
+        if ch == "'":
+            in_quote = not in_quote
+            buf.append(ch)
+        elif not in_quote and (ch.isspace() or ch == ","):
+            if buf:
+                tokens.append("".join(buf))
+                buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        tokens.append("".join(buf))
+    return tokens
+
+
+def normalize_actions(rule):
+    """Ensure the SecRule action field is a single double-quoted, comma-separated
+    string. Models occasionally emit it bare (`id:.., phase:2, deny, ...`) or
+    space-separated (`id:.. phase:2 deny ...`); ModSecurity rejects both at load
+    time, which crash-loops nginx. Rules that are already quoted are left as-is.
+
+    Only the text AFTER the @rx operator's closing quote is touched, so commas or
+    spaces inside the regex itself are never disturbed."""
+    m = re.search(r"@rx\s", rule)
+    if not m:
+        return rule                       # not an @rx rule; leave untouched
+    i = m.end()                           # walk to the operator's closing quote
+    while i < len(rule):
+        if rule[i] == "\\" and i + 1 < len(rule):
+            i += 2                         # skip escaped pair (e.g. \")
+            continue
+        if rule[i] == '"':
+            break
+        i += 1
+    if i >= len(rule):
+        return rule                        # malformed operator; let validation catch it
+    prefix, actions = rule[:i + 1], rule[i + 1:].strip()
+    if not actions or actions.startswith('"'):
+        return rule                        # no actions, or already quoted -> trust it
+    return f'{prefix} "{",".join(_split_actions(actions))}"'
+
+
 def clean_rule(text, rule_id):
-    """Strip markdown fences/prose and force a unique rule ID."""
+    """Strip markdown fences/prose, force a unique rule ID, and normalize the
+    action field so a formatting slip can't produce an unloadable rule."""
     if not text:
         return None
     text = re.sub(r"```[a-zA-Z]*", "", text).replace("```", "").strip()
@@ -142,7 +219,7 @@ def clean_rule(text, rule_id):
     text = text[m.start():].strip()
     if re.search(r"id:\s*\d+", text):
         text = re.sub(r"id:\s*\d+", f"id:{rule_id}", text, count=1)
-    return text
+    return normalize_actions(text)
 
 
 def validate_rule(rule):
@@ -259,8 +336,34 @@ def generate_validated_rule(template, payloads, rule_id):
 
 def attack_signature(payload):
     """Coarse attack-type label, used only to split a cluster that no single
-    rule can cover (e.g. boolean + time-based + error-based mixed together)."""
+    rule can cover. Covers SQLi, XSS and SSTI sub-families so heterogeneous
+    XSS/SSTI clusters (e.g. script-tag + javascript: URI + event-handler) can be
+    split into coverable subgroups, not just SQLi ones."""
     s = payload.lower()
+
+    # --- XSS sub-families ---
+    if "<script" in s or "</script" in s:
+        return "xss_script"
+    if "javascript:" in s:
+        return "xss_jsuri"
+    if any(k in s for k in ("onerror", "onload", "onfocus", "ontoggle",
+                            "onmouseover", "onclick")):
+        return "xss_event"
+    if "<" in s and any(k in s for k in ("svg", "img", "iframe", "video",
+                                         "body", "details", "alert(")):
+        return "xss_tag"
+
+    # --- SSTI sub-families ---
+    if any(k in s for k in ("popen", "__import__", "subclasses",
+                            "__globals__", "communicate", "os.system")):
+        return "ssti_rce"
+    if any(k in s for k in ("__class__", "__mro__", "__bases__",
+                            "config", "request.", "self.__")):
+        return "ssti_introspect"
+    if any(d in s for d in ("{{", "${", "#{", "<%", "{%")):
+        return "ssti_probe"
+
+    # --- SQLi sub-families ---
     if "union" in s:
         return "union"
     if any(k in s for k in ("sleep", "pg_sleep", "waitfor", "delay")):
@@ -349,7 +452,10 @@ def main():
 
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     rules_written = 0
-    id_counter = itertools.count(BASE_RULE_ID)
+    start_id = starting_rule_id()
+    if start_id != BASE_RULE_ID:
+        print(f"Starting rule IDs at {start_id} (above already-deployed rules) to avoid collisions.")
+    id_counter = itertools.count(start_id)
 
     with open(OUTPUT_FILE, "w") as out:
         out.write("# Auto-generated ModSecurity rules (XAF / LLM)\n")
