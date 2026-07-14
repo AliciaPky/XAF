@@ -9,7 +9,7 @@ output files:
 | **Attack Monitor** | Filterable attack table + CSV export | same |
 | **Clusters** | Cluster summary cards + live PCA scatter of TF-IDF vectors | `output/cluster*_payloads.txt` / clustered CSV |
 | **Rules** | Generate, view validation evidence, approve → deploy, reload WAF | `output/prompts/*`, `rules/custom/*.conf` |
-| **Attack Simulator** | Fire a payload at Juice Shop, see blocked vs bypassed, re-run pipeline | `http://localhost:80` + the scripts |
+| **Attack Simulator** | Fire a payload at the LMS, see blocked vs bypassed, re-run pipeline | `http://localhost:8080` + the scripts |
 
 The app reuses the generator's own `functional_validate` / `extract_regex`
 helpers (imported from `generator/generate_modsec_rules_llm.py`) so the
@@ -38,13 +38,13 @@ automatically when you launch from the project root.
 
 - **Works before Docker is up.** The read-only pages just render whatever output
   files exist; missing files show an empty-state message instead of crashing.
-- **Live actions need the stack.** Firing payloads needs `nginx-modsec` + `juice`
+- **Live actions need the stack.** Firing payloads needs `nginx-modsec` + `lms`
   (`docker compose up`); "Reload ModSecurity" runs `docker restart nginx-modsec`.
 - **Generating rules** uses your configured model via env vars
   (`XAF_MODEL`, `XAF_BASE_URL`, `OPENAI_API_KEY`) — same as the CLI generator.
 - **Approvals** are recorded in `ui/state/approvals.json`; approved rules are
   appended to `rules/custom/auto_approved.conf` (the generator's
-  `auto_sqli.conf` is never overwritten by the UI).
+  `auto_rules.conf` is never overwritten by the UI).
 - The Attack Simulator can re-cluster and regenerate, but turning a freshly-fired
   request into `parsed_logs.json` depends on your parser step — wire that in once
   the parser writes the full audit log (today `parser/test.py` only reads one line).

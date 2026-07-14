@@ -1,0 +1,18 @@
+{
+  "initialized": true,
+  "attacks": [
+    "/courses|admin'-- -",
+    "/courses|or 1=1"
+  ],
+  "candidates": [
+    "0"
+  ],
+  "deployed": [],
+  "deployed_cluster_keyed": true,
+  "settings": {
+    "attack": true,
+    "enabled": true,
+    "candidate": true,
+    "deployed": true
+  }
+}

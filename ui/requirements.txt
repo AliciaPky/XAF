@@ -1,6 +1,9 @@
-streamlit>=1.40
+streamlit>=1.42
+Authlib>=1.3.2
+plotly
 pandas
 scikit-learn
 requests
 regex
 streamlit-autorefresh
+reportlab
