@@ -81,7 +81,6 @@ LMS_USER, LMS_PASS = "student1", "pass123"  # session for authenticated sinks
 # simulator fires exactly what the traffic generators do (single source of truth).
 ATTACK_SCRIPTS = {
     "sqli": ROOT / "attackScript.py",
-    "web":  ROOT / "attackScript_xss_ssti.py",
 }
 
 # Attack vectors = how a payload reaches the WAF. Mirrors the sinks the
@@ -149,12 +148,11 @@ def attack_catalog() -> dict:
     """Payload catalog for the simulator, grouped attack type -> {vector,
     families{family: [payloads]}, benign[]}. This is the same ammunition the
     attackScript*.py generators fire at the WAF, surfaced for the console."""
-    sqli = _attack_module("sqli")
-    web = _attack_module("web")
+    mod = _attack_module("sqli")  # single merged attackScript.py holds all families
     return {
-        "sqli": {"vector": "courses_q",  "families": dict(sqli.SQLI_PAYLOADS), "benign": list(sqli.BENIGN_PAYLOADS)},
-        "xss":  {"vector": "xss_search", "families": dict(web.XSS_PAYLOADS),   "benign": list(web.BENIGN_PAYLOADS)},
-        "ssti": {"vector": "feedback",   "families": dict(web.SSTI_PAYLOADS),  "benign": list(web.BENIGN_PAYLOADS)},
+        "sqli": {"vector": "courses_q",  "families": dict(mod.SQLI_PAYLOADS), "benign": list(mod.BENIGN_SQLI)},
+        "xss":  {"vector": "xss_search", "families": dict(mod.XSS_PAYLOADS),  "benign": list(mod.BENIGN_XSS)},
+        "ssti": {"vector": "feedback",   "families": dict(mod.SSTI_PAYLOADS), "benign": list(mod.BENIGN_XSS)},
     }
 
 
