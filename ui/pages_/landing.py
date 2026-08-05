@@ -46,14 +46,16 @@ HTML = """
   .card{position:relative;z-index:2;width:100%;max-width:440px;display:flex;
     flex-direction:column;align-items:center;gap:26px;}
 
-  .logo{position:relative;width:64px;height:64px;display:flex;align-items:center;justify-content:center;}
+  .logo{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;
+  font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;letter-spacing:.04em;
+  transform:scale(1.6);transform-origin:center;} 
   .logo .ring{position:absolute;inset:0;border-radius:18px;border:1px solid #4f9dff;animation:pulseRing 2.6s ease-out infinite;}
   .logo .ring.b{animation-delay:1.3s;}
-  .logo .box{width:64px;height:64px;border-radius:18px;border:1px solid #2a3340;
+  .logo .xf{color:#9fc4ff;text-shadow:0 0 14px #4f9dff99;z-index:1;}
+  .logo .box{width:60px;height:60px;flex:none;border-radius:18px;border:1px solid #2a3340;
     background:linear-gradient(135deg,#141b27,#0d1219);display:flex;align-items:center;
     justify-content:center;box-shadow:0 12px 40px rgba(0,0,0,.5);}
-  .logo .diamond{width:20px;height:20px;background:#4f9dff;transform:rotate(45deg);
-    border-radius:5px;box-shadow:0 0 18px #4f9dffcc;}
+  .logo .a{color:#7db4ff;text-shadow:0 0 14px #4f9dffcc,0 0 26px #4f9dff88;}
 
   .head{text-align:center;display:flex;flex-direction:column;gap:9px;}
   .eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.22em;color:#4f9dff;}
@@ -74,10 +76,12 @@ HTML = """
   <div class="card">
     <div class="logo">
       <div class="ring"></div><div class="ring b"></div>
-      <div class="box"><div class="diamond"></div></div>
+      <span class="xf" style="margin-right:-2px;">X</span>
+      <span class="box"><span class="a">A</span></span>
+      <span class="xf" style="margin-left:-2px;">F</span>
     </div>
     <div class="head">
-      <div class="eyebrow">XAF · SECURE ACCESS</div>
+      <div class="eyebrow">SECURE ACCESS</div>
       <h1>Operator sign-in</h1>
       <p class="sub">Authenticate with your Google account to continue to the operator console. Password &amp; verification are handled by Google.</p>
     </div>
