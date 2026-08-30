@@ -1,56 +1,9 @@
 {
-  "disabled": [
-    "1000019"
-  ],
-  "1000000": {
-    "status": "approved"
-  },
-  "1000001": {
-    "status": "approved"
-  },
-  "1000002": {
-    "status": "approved"
-  },
+  "disabled": [],
   "1000003": {
-    "status": "approved"
-  },
-  "1000004": {
-    "status": "approved"
-  },
-  "1000005": {
-    "status": "approved"
-  },
-  "1000006": {
     "status": "approved"
   },
   "1000007": {
     "status": "approved"
-  },
-  "1000008": {
-    "status": "approved"
-  },
-  "1000009": {
-    "status": "approved"
-  },
-  "1000010": {
-    "status": "approved"
-  },
-  "1000011": {
-    "status": "approved"
-  },
-  "1000012": {
-    "status": "approved"
-  },
-  "1000013": {
-    "status": "approved"
-  },
-  "1000019": {
-    "status": "approved"
-  },
-  "1000030": {
-    "status": "approved"
-  },
-  "rejected_clusters": [
-    "4/union"
-  ]
+  }
 }

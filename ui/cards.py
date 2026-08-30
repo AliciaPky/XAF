@@ -63,12 +63,15 @@ def card_css(key: str) -> str:
 
 def cluster_card_html(*, head: str, family: str, family_color: str,
                       pill: tuple[str, str, str], subgroup: str | None,
-                      line2: tuple[str, str], count: str, selected: bool) -> str:
+                      line2: tuple[str, str], count: str, selected: bool,
+                      pill2: tuple[str, str, str] | None = None) -> str:
     """Build one card.
 
     head         — the id shown bold, e.g. "C3" or "#1000004"
     family       — display label, e.g. "SQLi" (coloured with family_color)
     pill         — (text, bg, fg) for the state pill (top-right)
+    pill2        — optional second badge shown just left of `pill` (e.g. an
+                   "UPDATE" tag alongside the "PENDING" state)
     subgroup     — optional secondary tag on line 2 (e.g. "boolean_and")
     line2        — (text, colour) for the main line-2 status (e.g. validation)
     count        — right-aligned count on line 2, e.g. "4 payloads"
@@ -78,6 +81,9 @@ def cluster_card_html(*, head: str, family: str, family_color: str,
     l_txt, l_color = line2
     sub = (f'<span class="clsub">{html.escape(subgroup)} ·</span>'
            if subgroup else "")
+    badge2 = ("" if pill2 is None else
+              f'<span class="clbadge" style="background:{pill2[1]};color:{pill2[2]};">'
+              f'{html.escape(pill2[0])}</span>')
     return (
         f'<div class="clcard{" sel" if selected else ""}">'
         f'<div class="clrow">'
@@ -86,7 +92,10 @@ def cluster_card_html(*, head: str, family: str, family_color: str,
         f'<span class="clid">{html.escape(head)}</span>'
         f'<span class="clfam" style="color:{family_color};">{html.escape(family)}</span>'
         f'</span>'
+        f'<span style="display:inline-flex;align-items:center;gap:6px;">'
+        f'{badge2}'
         f'<span class="clbadge" style="background:{p_bg};color:{p_fg};">{html.escape(p_txt)}</span>'
+        f'</span>'
         f'</div>'
         f'<div class="clrow2">'
         f'<span class="cll">{sub}<span class="clval" style="color:{l_color};">{html.escape(l_txt)}</span></span>'

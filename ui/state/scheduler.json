@@ -1,10 +1,10 @@
 {
   "enabled": false,
   "interval": 60,
-  "last_run": "2026-08-16T11:50:50",
+  "last_run": "2026-08-31T00:02:30",
   "last_ok": true,
   "last_msg": "parsed \u2192 clustered \u2192 generated",
-  "runs": 42,
+  "runs": 6,
   "running": false,
   "step": null
 }

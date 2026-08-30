@@ -60,6 +60,11 @@ def _status_pill(item: dict) -> tuple[str, str, str]:
     return "PENDING", "rgba(251,191,36,.14)", AMBER
 
 
+# The "UPDATE" tag shown ALONGSIDE the PENDING pill when a candidate supersedes an
+# existing live rule (returned as a second pill so both read on the card at once).
+_UPDATE_PILL = ("UPDATE", "rgba(79,157,255,.14)", "#8fc0ff")
+
+
 def _state_of(item: dict) -> str:
     # One of 'pending' / 'live' / 'rolled back' / 'rejected' — used by the filter.
     if item["live"]:
@@ -129,6 +134,14 @@ def render() -> None:
 
     live = lib.load_finalized_rules()          # in rules/custom (has `disabled`)
     cand = lib.load_candidate_rules()          # in rules/experiments (has `status`)
+    # Auto-supersede: when a pending candidate is an UPDATE for a cluster that already
+    # has a live / rolled-back rule (its payloads changed, so the regex did too), hide
+    # the old rule and show only the new one. Approving it removes the old rule for
+    # real (lib.deploy_generated_rule); until then the old rule stays enforced.
+    superseded = {c["ckey"] for c in cand if c.get("is_update") and c["status"] == "pending"}
+    if superseded:
+        live = [r for r in live
+                if lib.cluster_key(r["cluster"], r["subgroup"]) not in superseded]
     live_ids = {r["id"] for r in live}
     for r in live:
         r["live"], r["status"] = True, "approved"
@@ -230,6 +243,8 @@ def render() -> None:
                         family=item["family"],
                         family_color=FAMILY_COLORS.get(item["family"], MUTED),
                         pill=_status_pill(item),
+                        pill2=(_UPDATE_PILL if item.get("is_update")
+                               and _state_of(item) == "pending" else None),
                         subgroup=item.get("subgroup"),
                         line2=_validation_label(item),
                         count=f"{item['scope_size']} payloads",
@@ -266,9 +281,18 @@ def render() -> None:
                     "WAF without deleting the rule; restore to re-enable.")
         elif status == "rejected":
             desc = "You rejected this candidate. Undo to move it back to pending."
+        elif item.get("is_update"):
+            desc = ("Updated candidate — this cluster gained new payloads, so the AI redrew "
+                    "its rule. The current live rule is hidden while this is pending; "
+                    "approving replaces it in the WAF.")
         else:
             desc = ("AI-drafted candidate for this attack cluster, validated against its "
                     "captured payloads. Approve to promote it into the live WAF.")
+
+        update_badge = (
+            '<span class="ra-badge" style="background:rgba(79,157,255,.14);color:#8fc0ff;">'
+            'UPDATE · SUPERSEDES LIVE</span>'
+            if item.get("is_update") else "")
 
         # header card
         st.markdown(f"""
@@ -278,6 +302,7 @@ def render() -> None:
               <span style="font-size:18px;font-weight:600;">{cluster_lbl} · {item['family']}</span>
               <span class="ra-badge" style="background:rgba(79,157,255,.12);color:#8fc0ff;">
                 VALIDATION {verdict}</span>
+              {update_badge}
               <span style="flex:1;"></span>
               <span class="mono" style="font-size:12px;color:{FAINT};">{rid_txt}</span>
             </div>

@@ -971,29 +971,46 @@ def set_cluster_rejected(ckey: str, rejected: bool) -> None:
     _write_state(state)
 
 
+def _rule_body(text: str) -> str:
+    """A rule's identity IGNORING its volatile ID — the generator renumbers IDs on
+    every run, so two rules with the same operator/pattern but a different `id:` are
+    the same rule. Used to tell a genuinely-UPDATED candidate (the cluster gained new
+    payloads, so the regex changed) apart from a re-emitted duplicate of a rule that
+    is already live."""
+    return re.sub(r"\s+", " ", re.sub(r"id:\s*\d+", "id:*", text or "")).strip()
+
+
 def load_candidate_rules() -> list[dict]:
     """CANDIDATE rules awaiting approval — the generator's validated output
     (candidates_conf(), which the WAF does NOT load), enriched with family and
     subgroup-aware validation.
 
-    De-duplicated by cluster so a repeated auto-generate cycle doesn't re-offer rules
-    for clusters already handled:
-      • a candidate whose (cluster, subgroup) already has a rule in rules/custom is
-        dropped — that cluster is managed as a live / rolled-back rule instead;
+    De-duplicated by rule CONTENT (not by cluster) so a repeated auto-generate cycle
+    doesn't re-offer identical rules, yet a genuine update still surfaces:
+      • a candidate whose rule body matches the live rule for its (cluster, subgroup)
+        is dropped — nothing changed, that cluster is already handled;
+      • a candidate whose rule body DIFFERS from the live rule for its cluster is kept
+        and marked `is_update` — the cluster's payloads changed, so the operator can
+        deploy the new rule (which supersedes the old one). This is the case the old
+        cluster-only dedup wrongly suppressed;
       • a candidate whose cluster the operator rejected is kept but marked 'rejected'
         (hidden from the pending list, still visible/undo-able under the Rejected
         filter);
       • everything else is 'pending'.
     """
-    covered = {cluster_key(r["cluster"], r["subgroup"]) for r in load_deployed_rules()}
-    covered.discard("")
+    covered: dict[str, list[str]] = {}
+    for r in load_deployed_rules():
+        k = cluster_key(r["cluster"], r["subgroup"])
+        if k:
+            covered.setdefault(k, []).append(_rule_body(r["rule"]))
     rejected = rejected_clusters()
     out = []
     for item in _enrich_rules(_parse_conf(candidates_conf())):
         k = cluster_key(item["cluster"], item.get("subgroup"))
-        if k and k in covered:
-            continue                       # already covered by a rule in rules/custom
+        if k and _rule_body(item["rule"]) in covered.get(k, []):
+            continue                       # identical to a live rule — truly redundant
         item["ckey"] = k
+        item["is_update"] = bool(k and k in covered)   # differs from the live rule
         item["status"] = "rejected" if k in rejected else "pending"
         out.append(item)
     return out
@@ -1022,21 +1039,64 @@ def rule_is_live(rule_text: str) -> bool:
     return idm.group(1) in {r["id"] for r in load_deployed_rules()}
 
 
+def _remove_cluster_rules(cluster, subgroup=None) -> list[str]:
+    """Strip every live SecRule block tagged for this (cluster, subgroup) out of the
+    confs in rules/custom, and clear those IDs from the rolled-back state. Returns the
+    removed rule IDs. Used when an updated rule supersedes the old one, so the cluster
+    ends up with exactly ONE live rule — no duplicate IDs, no stale rule left firing."""
+    target = cluster_key(cluster, subgroup)
+    if not target:
+        return []
+    removed: list[str] = []
+
+    def _repl(m):
+        cm = CLUSTER_RE.search(m.group("comments") or "")
+        if not cm or cluster_key(int(cm.group(1)), cm.group(2)) != target:
+            return m.group(0)
+        idm = re.search(r"id:\s*(\d+)", m.group("rule"))
+        if idm:
+            removed.append(idm.group(1))
+        return ""                          # drop this block
+
+    for conf in deployed_confs():
+        if conf == DISABLED_CONF:          # only SecRuleRemoveById lines — nothing to strip
+            continue
+        original = conf.read_text(encoding="utf-8")
+        stripped = RULE_BLOCK_RE.sub(_repl, original)
+        if stripped != original:
+            conf.write_text(re.sub(r"\n{3,}", "\n\n", stripped), encoding="utf-8")
+
+    if removed:                            # a superseded rule may have been rolled back
+        state = _read_state()
+        ids = set(state.get("disabled", []))
+        if ids & set(removed):
+            ids -= set(removed)
+            state["disabled"] = sorted(ids)
+            _write_state(state)
+            _write_disabled_conf(ids)
+    return removed
+
+
 def deploy_generated_rule(rule_text: str, cluster, key: str, subgroup=None) -> dict:
     """Approve a generated rule and make sure the WAF enforces it. Records the
-    approval in operator state; then, ONLY if the rule's ID isn't already loaded,
-    appends it to auto_approved.conf (never touching the generator's auto_rules.conf)
-    so a reload picks it up."""
+    approval in operator state; auto-supersedes any existing live / rolled-back rule
+    for the same cluster (removing it so the update replaces it rather than stacking a
+    second, stale, duplicate-ID rule); then, ONLY if the rule's ID isn't already
+    loaded, appends it to auto_approved.conf (never touching the generator's
+    auto_rules.conf) so a reload picks it up."""
     set_rule_status(key, "approved")
+    superseded = _remove_cluster_rules(cluster, subgroup)
     if rule_is_live(rule_text):
-        return {"approved": True, "appended": False, "already_live": True, "path": None}
+        return {"approved": True, "appended": False, "already_live": True,
+                "path": None, "superseded": superseded}
     APPROVED_CONF.parent.mkdir(parents=True, exist_ok=True)
     header = "# XAF approved (operator-deployed) rules — appended by the console.\n\n"
     existing = APPROVED_CONF.read_text(encoding="utf-8") if APPROVED_CONF.exists() else header
     tag = f"Cluster {cluster}" + (f" / {subgroup}" if subgroup else "")
     existing += f"# {tag} (approved via console)\n{rule_text.strip()}\n\n"
     APPROVED_CONF.write_text(existing, encoding="utf-8")
-    return {"approved": True, "appended": True, "already_live": False, "path": APPROVED_CONF}
+    return {"approved": True, "appended": True, "already_live": False,
+            "path": APPROVED_CONF, "superseded": superseded}
 
 
 # ----------------------------------------------------------------------------
