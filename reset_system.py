@@ -6,21 +6,6 @@ Clears the whole pipeline (logs -> parse -> cluster -> generate -> approve/deplo
 resets operator run-state, and restarts the nginx-modsec container so the live WAF
 comes back CRS-only.
 
-Deliberately PRESERVED (things you didn't ask to lose):
-  - FYP model-comparison artifacts:
-      rules/experiments/auto_sqli.*.conf
-      output/prompts/<model>/   (gemma4, gpt-4o, gpt-5.4, ...)
-      output/model_runs/
-  - hand-written analyst rules: rules/custom/manual.conf
-  - your notification preferences: the "settings" block in ui/state/alerts.json
-
-IMPORTANT: this turns Auto-generate OFF. If the Streamlit console is running with
-Auto-generate on, its background scheduler re-runs parse->cluster->generate every
-~60s and would immediately repopulate everything you just cleared. Forcing it off
-here makes the reset actually stick. Pass --keep-schedule to preserve the setting
-(only safe if the console isn't running). Re-enable Auto-generate from the UI when
-you're ready.
-
 Usage:
     python reset_system.py                 # prompts before wiping
     python reset_system.py --yes           # no prompt
@@ -39,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-# ── header stubs the console expects rule files to start from ────────────────
+# --header stubs the console expects rule files to start from--
 AUTO_APPROVED_HEADER = "# XAF approved (operator-deployed) rules — appended by the console.\n"
 ZZ_DISABLED_HEADER = (
     "# XAF disabled rules — auto-managed by the operator console.\n"
@@ -51,7 +36,7 @@ NGINX_SERVICE = "nginx-modsec"
 
 
 def _rm(path: Path) -> bool:
-    """Delete a file if present. Returns True if something was removed."""
+    # Delete a file if present. Returns True if something was removed
     if path.is_file():
         path.unlink()
         return True
@@ -59,8 +44,7 @@ def _rm(path: Path) -> bool:
 
 
 def _truncate(path: Path) -> None:
-    """Empty a file in place (keeps the inode so a container's bind-mounted
-    handle stays valid)."""
+    # Empty a file in place (keeps the inode so a container's bind-mounted handle stays valid).
     if path.exists():
         path.write_text("", encoding="utf-8")
 
@@ -101,8 +85,6 @@ def clear_generate_history() -> None:
     print("• Generate history (candidates, prompt traces, gen log)")
     removed = _rm(ROOT / "rules" / "experiments" / "auto_rules.conf")
     removed += _rm(ROOT / "output" / "gen_run.log")
-    # Only the ACTIVE top-level traces in output/prompts/ — the per-model archive
-    # subdirs (gemma4/, gpt-4o/, ...) are FYP data and are left alone.
     prompts = ROOT / "output" / "prompts"
     traces = 0
     if prompts.is_dir():
@@ -129,8 +111,7 @@ def clear_operator_state(keep_schedule: bool) -> None:
     # Approvals: wipe all approve/reject/disable decisions.
     _write(state / "approvals.json", json.dumps({"disabled": []}, indent=2) + "\n")
 
-    # Alerts: clear the "seen" baseline so alerts fire fresh, but KEEP the
-    # operator's notification toggles.
+    # Alerts: clear the "seen" baseline so alerts fire fresh, but KEEP the operator's notification toggles.
     alerts = _load_json(state / "alerts.json")
     settings = alerts.get("settings")
     fresh_alerts: dict = {

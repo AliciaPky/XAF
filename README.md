@@ -1,11 +1,8 @@
-# XAF — Self-Improving Web Application Firewall
+# XAF - Self-Improving Web Application Firewall
 
 XAF is a self-improving WAF that learns from the attacks that slip past a
 traditional rule set. It runs live attack traffic through **nginx + ModSecurity +
-OWASP CRS**, parses the audit log, clusters the payloads that bypassed CRS by
-attack family, and uses an LLM to generate new ModSecurity rules to close those
-gaps. Every generated rule is functionally validated and then held for **human
-approval** before it goes live — nothing self-deploys.
+OWASP CRS**, parses the audit log, clusters the payloads that bypassed CRS by attack family, and uses an LLM to generate new ModSecurity rules to close those gaps. Every generated rule is functionally validated and then held for **human approval** before it goes live, so nothing self-deploys.
 
 ```
 attack traffic → ModSecurity/CRS → audit.log
@@ -19,7 +16,7 @@ attack traffic → ModSecurity/CRS → audit.log
 | Service | Role |
 |---------|------|
 | `nginx-modsec` | nginx + ModSecurity v3 + OWASP CRS reverse proxy (the WAF), on port **8080** |
-| `lms` | Vulnerable Learning Management System target (Flask + MySQL), direct on port **5000** |
+| `lms` | Vulnerable target LMS (Flask + MySQL), direct on port **5000** |
 | `db` | MySQL 8 backing the LMS |
 
 The pipeline itself is plain Python (parser / clustering / generator) plus a
@@ -38,8 +35,7 @@ Streamlit operator console.
 | `prompts/` | LLM prompt template |
 | `ui/` | Streamlit operator console (dashboard, clusters, rule approval, attack simulator) |
 | `targets/lms/` | The vulnerable LMS app and its Docker build |
-| `attackScript.py` | Generates SQLi traffic through the WAF (lab use) |
-| `attackScript_xss_ssti.py` | Generates XSS / SSTI traffic through the WAF (lab use) |
+| `attackScript.py` | Generates SQLi / XSS / SSTI traffic through the WAF (lab use) |
 | `reset_system.py` | Returns the whole pipeline to a clean, CRS-only state |
 
 ## Getting started
@@ -67,8 +63,8 @@ docker compose up --build
 ### 3. Generate attack traffic
 
 ```bash
-python attackScript.py                  # SQLi through the WAF
-python attackScript_xss_ssti.py         # XSS / SSTI through the WAF
+python attackScript.py                  # SQLi + XSS + SSTI through the WAF
+python attackScript.py --type xss       # one attack type only (sqli | xss | ssti)
 ```
 
 These write real entries into `modsec-logs/audit.log`.
