@@ -27,8 +27,6 @@ STATUS_DISPLAY = {"blocked": "BLOCKED", "bypassed": "UNCAUGHT"}
 
 @st.cache_data(ttl=20, show_spinner=False)
 def _build_report_pdf() -> bytes:
-    """Cached so the download button doesn't rebuild the PDF on every rerun/refresh
-    (it refreshes at most every 20s)."""
     import report
     return report.build_pdf_report()
 
@@ -47,7 +45,7 @@ def _pdf_download_button() -> None:
 
 @st.cache_data(ttl=5)
 def load_dashboard_data() -> dict:
-    """Read every artefact the dashboard needs, once per refresh."""
+    # Read every artefact the dashboard needs, once per refresh
     df = lib.load_attacks()
     m = lib.attack_metrics(df)
     total = m["total"]
@@ -131,7 +129,7 @@ def render() -> None:
         st.info("No parsed attacks yet. Run the parser + clustering to populate "
                 "`output/parsed_logs.json` / `output/clustered_attacks.csv`, then refresh.")
 
-    # ── KPI row ──
+    # -- KPI row --
     for col, (label, val, sub, accent) in zip(st.columns(6), data["kpis"]):
         col.markdown(f"""
           <div class="kpi">
@@ -146,7 +144,7 @@ def render() -> None:
 
     st.write("")
 
-    # ── Coverage trend + attack-type donut ──
+    # -- Coverage trend + attack-type donut --
     c1, c2 = st.columns([1.8, 1])
     with c1:
         with st.container(border=True):
@@ -175,13 +173,11 @@ def render() -> None:
 
     st.write("")
 
-    # ── Self-healing pipeline ──
+    # -- Self-healing pipeline --
     with st.container(border=True):
         st.markdown('<div class="h">Self-Healing Pipeline</div>'
                     '<div class="hsub" style="margin-bottom:10px;">End-to-end AI-powered protection workflow</div>',
                     unsafe_allow_html=True)
-        # One flex row so a connector line can bridge each circle to the next
-        # (st.columns can't do this — each column is an isolated DOM block).
         steps = data["pipeline"]
         parts = ['<div class="pipeline">']
         for i, (label, count, color) in enumerate(steps):
@@ -198,7 +194,7 @@ def render() -> None:
 
     st.write("")
 
-    # ── Attacks today ──
+    # -- Attacks today --
     with st.container(border=True):
         today_str = date.today().strftime("%b %d, %Y")
         st.markdown('<div style="display:flex;align-items:baseline;justify-content:space-between;'
@@ -213,8 +209,6 @@ def render() -> None:
                 bg = "rgba(52,211,153,.14)" if blocked else "rgba(248,113,113,.14)"
                 fg = GREEN if blocked else RED
                 meta = rule_id
-                # escape attacker-controlled fields — a payload like
-                # "<svg onload=alert(2)>" must render as TEXT, not live HTML
                 uri_s = html.escape(str(uri))
                 payload_s = html.escape(str(payload))
                 st.markdown(f"""

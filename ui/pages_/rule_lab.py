@@ -32,7 +32,7 @@ def _display_family(raw) -> str:
 
 
 def _validation_label(item: dict) -> tuple[str, str]:
-    """(text, colour) for the card's validation status line."""
+    # (text, colour) for the card's validation status line.
     if item["valid"] is True:
         return "PASSED", GREEN
     if item["valid"] is False:
@@ -129,7 +129,7 @@ def render() -> None:
         item["family"] = _display_family(item.get("family"))   # CSV family -> display label
         item["endpoint"] = endpoints.get(item["cluster"], "—")
 
-    # ── empty state ──
+    # -- empty state --
     if not rules:
         st.info("No rules are live yet. Approve generated candidates in **Rule Approval**, "
                 "or write your own in **Rule Builder** — both deploy into rules/custom/ "
@@ -143,7 +143,7 @@ def render() -> None:
 
     pick_col, work_col = st.columns([1, 2], gap="medium")
 
-    # ── cluster picker ──
+    # -- cluster picker --
     with pick_col:
         st.markdown('<div class="eyebrow" style="margin:0 0 10px 2px;">ATTACK CLUSTERS</div>',
                     unsafe_allow_html=True)
@@ -165,7 +165,7 @@ def render() -> None:
                         st.session_state.rl_sel = item["id"]
                         st.rerun()
 
-    # ── rule workspace ──
+    # -- rule workspace --
     with work_col:
         item = next(q for q in rules if q["id"] == st.session_state.rl_sel)
         fcolor = FAMILY_COLORS.get(item["family"], MUTED)

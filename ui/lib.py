@@ -84,8 +84,6 @@ ATTACK_SCRIPTS = {
 }
 
 # Attack vectors = how a payload reaches the WAF. Mirrors the sinks the
-# attackScript_*.py CLIs hit. auth=True vectors need an LMS session first;
-# `extra` holds the other form fields so only `param` carries the payload.
 VECTORS = {
     "courses_q":      {"method": "GET",  "path": "/courses",    "param": "q",        "auth": False, "label": "GET /courses?q="},
     "login_username": {"method": "POST", "path": "/login",      "param": "username", "auth": False, "extra": {"password": "wrongpass"}, "label": "POST /login · username"},
@@ -492,7 +490,7 @@ def llm_review_rule(rule_text: str, payloads: list[str]) -> dict:
                       {"role": "user", "content": user}],
         )
         return {"ok": True, "text": resp.choices[0].message.content}
-    except Exception as e:  # noqa: BLE001 — surface any API/config error to the UI
+    except Exception as e: 
         return {"ok": False, "error": str(e)}
 
 
@@ -611,7 +609,7 @@ def send_telegram(text: str, *, timeout: float = 8.0) -> dict:
         if r.status_code == 200 and r.json().get("ok"):
             return {"ok": True, "error": None}
         return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
-    except Exception as e:  # noqa: BLE001 — surface transport/HTTP errors to the UI
+    except Exception as e:  
         return {"ok": False, "error": str(e)}
 
 
@@ -781,20 +779,13 @@ def _run_alert_checks() -> list[str]:
     return sent
 
 
-# ── auto-generate scheduler ──────────────────────────────────────────────────
-# A background daemon thread runs the generator on an interval while enabled. The
-# enabled flag + status live in state/scheduler.json so the toggle survives reruns
-# and the thread keeps going even with no browser open. The thread never touches
-# Streamlit (only subprocess + files), so there's no ScriptRunContext issue.
-
+# --auto-generate scheduler--
 SCHEDULER_INTERVAL = 60             # seconds between auto-runs
 _scheduler_lock = threading.Lock()
 _scheduler_thread = None
 
-
 def _scheduler_path() -> Path:
     return STATE_DIR / "scheduler.json"
-
 
 def get_scheduler_state() -> dict:
     try:
@@ -807,32 +798,26 @@ def get_scheduler_state() -> dict:
             "last_msg": s.get("last_msg", ""), "runs": int(s.get("runs", 0)),
             "running": bool(s.get("running", False)), "step": s.get("step")}
 
-
 def _write_scheduler_state(s: dict) -> None:
     _scheduler_path().parent.mkdir(parents=True, exist_ok=True)
     _scheduler_path().write_text(json.dumps(s, indent=2), encoding="utf-8")
-
 
 def set_scheduler_enabled(enabled: bool) -> None:
     s = get_scheduler_state()
     s["enabled"] = bool(enabled)
     _write_scheduler_state(s)
 
-
 # Full self-healing loop, in order. Halts at the first failing step.
 _PIPELINE = ("parse", "cluster", "generate")
-
 
 def _set_running(step: str | None) -> None:
     s = get_scheduler_state()
     s["running"], s["step"] = step is not None, step
     _write_scheduler_state(s)
 
-
 def _do_scheduled_run() -> None:
     """One self-healing cycle: parse the audit log → re-cluster → generate candidate
-    rules, halting at the first failing step. Records the outcome, then fires
-    Telegram alerts (so scheduled runs notify even with no browser open)."""
+    rules, halting at the first failing step. Records the outcome, then fires Telegram alerts"""
     ok, msg = True, ""
     try:
         for step in _PIPELINE:
@@ -841,7 +826,7 @@ def _do_scheduled_run() -> None:
             if not res.get("ok"):
                 ok, msg = False, f"{step} failed (exit {res.get('code')})"
                 break
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  
         ok, msg = False, str(e)[:200]
     if ok:
         msg = "parsed → clustered → generated"
@@ -853,7 +838,7 @@ def _do_scheduled_run() -> None:
     _write_scheduler_state(s)
     try:
         run_alert_checks()             # alert on new attacks / candidates, headless-safe
-    except Exception:  # noqa: BLE001
+    except Exception:  
         pass
 
 
@@ -873,9 +858,9 @@ def _scheduler_loop() -> None:
             s = get_scheduler_state()
             if s["enabled"] and _due(s):
                 _do_scheduled_run()
-        except Exception:  # noqa: BLE001 — never let the loop die
+        except Exception:  
             pass
-        time.sleep(5)                  # check every 5s, run when the interval elapses
+        time.sleep(5)     # check every 5s, run when the interval elapses
 
 
 def ensure_scheduler_running() -> None:
@@ -1041,10 +1026,7 @@ def deploy_generated_rule(rule_text: str, cluster, key: str, subgroup=None) -> d
     """Approve a generated rule and make sure the WAF enforces it. Records the
     approval in operator state; then, ONLY if the rule's ID isn't already loaded,
     appends it to auto_approved.conf (never touching the generator's auto_rules.conf)
-    so a reload picks it up. The cluster (and subgroup, if any) is written into the
-    rule's comment so the candidate de-dup can tell this cluster is now covered.
-    Returns what happened so the caller can reload the WAF exactly when a file was
-    written. Guards against the duplicate-ID crash-loop."""
+    so a reload picks it up."""
     set_rule_status(key, "approved")
     if rule_is_live(rule_text):
         return {"approved": True, "appended": False, "already_live": True, "path": None}
@@ -1128,7 +1110,7 @@ def attribute_block(payload: str) -> dict:
             continue
         try:
             rx = gen.compile_pattern(pat)
-        except Exception:   # noqa: BLE001 — a bad pattern just can't be attributed
+        except Exception:   
             continue
         if rx.search(payload):
             return {"rule_id": r["id"], "cluster": r["cluster"]}
@@ -1136,10 +1118,7 @@ def attribute_block(payload: str) -> dict:
 
 
 def fire_payloads(tasks: list[dict], base: str = DEFAULT_BASE) -> list[dict]:
-    """Fire a batch of payloads through the live WAF, reusing one session per
-    auth requirement (so authenticated sinks log in only once). Each task is a
-    dict with `payload` and optional `vector`/`family`/`type`; returns those
-    tasks enriched with the fire result, in order."""
+    # Fire a batch of payloads through the live WAF, reusing one session per auth requirement
     results, sessions = [], {}
     for t in tasks:
         vector = t.get("vector", "courses_q")
@@ -1154,7 +1133,7 @@ def fire_payloads(tasks: list[dict], base: str = DEFAULT_BASE) -> list[dict]:
 
 
 def run_script(name: str, extra_env: dict | None = None, timeout: int = 600) -> dict:
-    """Run a pipeline script with the current Python interpreter from ROOT."""
+    # Run a pipeline script with the current Python interpreter from ROOT
     script = SCRIPTS.get(name)
     if not script or not script.exists():
         return {"ok": False, "stdout": "", "stderr": f"script not found: {name}", "code": -1}
@@ -1174,7 +1153,7 @@ def run_script(name: str, extra_env: dict | None = None, timeout: int = 600) -> 
 
 
 def reload_modsecurity(container: str = "nginx-modsec") -> dict:
-    """Restart the WAF container so newly-approved rules take effect."""
+    # Restart the WAF container so newly-approved rules take effect.
     try:
         proc = subprocess.run(
             ["docker", "restart", container],

@@ -41,6 +41,7 @@ DEPLOYED_RULES_GLOB = os.getenv("XAF_DEPLOYED_GLOB", "./rules/custom/*.conf")
 
 MODEL           = os.getenv("XAF_MODEL", "gpt-5.4-mini")
 API_KEY         = os.getenv("OPENAI_API_KEY", "")
+BASE_URL        = os.getenv("XAF_BASE_URL", "")
 
 BASE_RULE_ID    = 1000000
 SKIP_NOISE      = True         # skip DBSCAN noise cluster (-1)
@@ -64,10 +65,9 @@ BENIGN_SAMPLES = [
     "hello world",
 ]
 
-
 def deployed_rule_ids(exclude_path=None):
-    """Every rule ID already present in the WAF-loaded rules dir, so a new run
-    never reuses a deployed ID (ModSecurity fatally errors on duplicates)."""
+    # Every rule ID already present in the WAF-loaded rules dir, so a new run
+    # never reuses a deployed ID.
     ids = set()
     ex = os.path.abspath(exclude_path) if exclude_path else None
     for path in glob.glob(DEPLOYED_RULES_GLOB):
@@ -82,7 +82,7 @@ def deployed_rule_ids(exclude_path=None):
 
 
 def starting_rule_id():
-    """Begin IDs above the highest already-deployed rule (>= BASE_RULE_ID)."""
+    # Begin IDs above the highest already-deployed rule (>= BASE_RULE_ID)
     used = [i for i in deployed_rule_ids(exclude_path=OUTPUT_FILE) if i >= BASE_RULE_ID]
     return max(used) + 1 if used else BASE_RULE_ID
 
@@ -93,7 +93,7 @@ def load_prompt_template():
 
 
 def get_clusters(df):
-    """Group unique payloads by cluster label, skipping empties (and noise if configured)."""
+    # Group unique payloads by cluster label, skipping empties
     df = df.copy()
     df["payload"] = df["payload"].fillna("").astype(str)
     df = df[df["payload"].str.strip() != ""]
@@ -204,7 +204,7 @@ def clean_rule(text, rule_id):
 
 
 def validate_rule(rule):
-    """Cheap structural pre-check that the required tokens are present."""
+    # Cheap structural pre-check that the required tokens are present
     if not rule:
         return False
     required = ["SecRule", "id:", "phase:", "deny"]
@@ -357,7 +357,6 @@ def split_payloads(payloads):
 
 
 def save_trace(cluster_id, prompt, raw=None, rule=None):
-    """Save the cluster -> prompt -> output -> rule chain for traceability."""
     os.makedirs(PROMPT_LOG_DIR, exist_ok=True)
     with open(f"{PROMPT_LOG_DIR}/cluster_{cluster_id}_prompt.txt", "w") as f:
         f.write(prompt)

@@ -20,8 +20,6 @@ Attack sinks:
 The XSS and SSTI endpoints are authenticated, so the script logs in first and
 reuses the session cookie for every request.
 
-Requires only the Python 3 standard library.
-
 Usage
 -----
     python3 attackScript.py
@@ -215,13 +213,13 @@ BENIGN_XSS = [
 # HTTP helpers
 # ---------------------------------------------------------------------------
 def make_opener():
-    """Return an opener that follows redirects and stores cookies."""
+    # Return an opener that follows redirects and stores cookies
     jar = urllib.request.HTTPCookieProcessor()
     return urllib.request.build_opener(jar)
 
 
 def do_login(opener, base):
-    """Authenticate through the WAF and store the session cookie in opener."""
+    # Authenticate through the WAF and store the session cookie in opener
     body = urllib.parse.urlencode({"username": LOGIN_USER, "password": LOGIN_PASS}).encode()
     req = urllib.request.Request(
         f"{base}/login",
@@ -240,7 +238,7 @@ def do_login(opener, base):
 
 
 def do_request(opener, url, data=None):
-    """Send one request through the session opener; return the HTTP status code."""
+    # Send one request through the session opener; return the HTTP status code
     method = "POST" if data is not None else "GET"
     req = urllib.request.Request(
         url, data=data,
@@ -261,19 +259,19 @@ def do_request(opener, url, data=None):
 # Attack functions — SQLi
 # ---------------------------------------------------------------------------
 def attack_login_username(opener, base, payload):
-    """POST /login — inject into the username field."""
+    # POST /login — inject into the username field.
     body = urllib.parse.urlencode({"username": payload, "password": "wrongpass"}).encode()
     return do_request(opener, f"{base}/login", data=body)
 
 
 def attack_login_password(opener, base, payload):
-    """POST /login — inject into the password field."""
+    # POST /login — inject into the password field.
     body = urllib.parse.urlencode({"username": "admin", "password": payload}).encode()
     return do_request(opener, f"{base}/login", data=body)
 
 
 def attack_courses_search(opener, base, payload):
-    """GET /courses?q= — inject into the course search parameter."""
+    # GET /courses?q= — inject into the course search parameter.
     qs = urllib.parse.urlencode({"q": payload})
     return do_request(opener, f"{base}/courses?{qs}")
 
@@ -282,13 +280,13 @@ def attack_courses_search(opener, base, payload):
 # Attack functions — XSS / SSTI
 # ---------------------------------------------------------------------------
 def attack_xss_search(opener, base, payload):
-    """GET /xss-search?q=<payload>"""
+    # GET /xss-search?q=<payload>
     qs = urllib.parse.urlencode({"q": payload})
     return do_request(opener, f"{base}/xss-search?{qs}")
 
 
 def attack_ssti_feedback(opener, base, payload):
-    """POST /feedback with message=<payload>"""
+    # POST /feedback with message=<payload>
     body = urllib.parse.urlencode({"message": payload}).encode()
     return do_request(opener, f"{base}/feedback", data=body)
 
@@ -297,25 +295,25 @@ def attack_ssti_feedback(opener, base, payload):
 # Benign baselines
 # ---------------------------------------------------------------------------
 def attack_benign_login(opener, base, payload):
-    """POST /login with a benign username (false-positive baseline)."""
+    # POST /login with a benign username (false-positive baseline).
     body = urllib.parse.urlencode({"username": payload, "password": "wrongpass"}).encode()
     return do_request(opener, f"{base}/login", data=body)
 
 
 def attack_benign_courses(opener, base, payload):
-    """GET /courses?q=<benign> — false-positive baseline."""
+    # GET /courses?q=<benign> — false-positive baseline.
     qs = urllib.parse.urlencode({"q": payload})
     return do_request(opener, f"{base}/courses?{qs}")
 
 
 def attack_benign_search(opener, base, payload):
-    """GET /xss-search?q=<benign> — false-positive baseline."""
+    # GET /xss-search?q=<benign> — false-positive baseline.
     qs = urllib.parse.urlencode({"q": payload})
     return do_request(opener, f"{base}/xss-search?{qs}")
 
 
 def attack_benign_feedback(opener, base, payload):
-    """POST /feedback with benign message — false-positive baseline."""
+    # POST /feedback with benign message — false-positive baseline.
     body = urllib.parse.urlencode({"message": payload}).encode()
     return do_request(opener, f"{base}/feedback", data=body)
 
@@ -366,7 +364,7 @@ def build_tasks(attack_type, include_benign):
 
 
 def build_bypass_tasks():
-    """Return SQLi tasks for only the payloads that evade the traditional CRS WAF."""
+    # Return SQLi tasks for only the payloads that evade the traditional CRS WAF
     tasks = []
     for family, payloads in BYPASS_PAYLOADS.items():
         for p in payloads:

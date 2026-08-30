@@ -2,20 +2,10 @@
 Rule Approval review queue and the Attack Simulator library, so they stay in sync.
 
 Streamlit buttons can't hold HTML, so each card is a styled <div> with a
-transparent full-size button laid over it to capture the click. A page renders
-the cards like this:
+transparent full-size button laid over it to capture the click.
 
-    st.markdown(cards.card_css("ra_queue"), unsafe_allow_html=True)
-    with st.container(key="ra_queue"):
-        for item in items:
-            with st.container(key=f"ra_queue_card_{item_id}"):
-                st.markdown(cards.cluster_card_html(...), unsafe_allow_html=True)
-                if st.button("select", key=f"ra_queue_pick_{item_id}"):
-                    ...
-
-card_css(key) scopes the overlay/gap rules to `.st-key-<key>` (the outer
-container) and its `st-key-<key>_card_*` children, so nothing else on the page
-(e.g. the nav-rail buttons) is affected.
+card_css(key) scopes the overlay/gap rules to `.st-key-<key>` (the outer container) and 
+its `st-key-<key>_card_*` children, so nothing else on the page (e.g. the nav-rail buttons) is affected.
 """
 
 import html

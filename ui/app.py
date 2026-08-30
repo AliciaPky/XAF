@@ -1,10 +1,6 @@
 """
 XAF Operator Console — Streamlit entry point.
 
-Run from the ui/ directory (so .streamlit/secrets.toml is found for OIDC auth):
-    cd ui
-    streamlit run app.py
-
 This file is just the shell: page config, global CSS, the navigation rail and a
 tiny session-state router. Each page lives in pages_/ and exposes a render().
 Shared bits live in theme.py (palette + CSS) and charts.py (plotly builders).
@@ -41,12 +37,10 @@ st.session_state.setdefault("page", NAV[0])
 # Background auto-generate scheduler (idempotent; the thread idles while off).
 lib.ensure_scheduler_running()
 
-# Fire Telegram alerts for any new events (uncaught attack / new candidate / newly
-# deployed rule). No-op unless configured; guarded so a transient send failure can
-# never break the console.
+# Fire Telegram alerts for any new events (uncaught attack / new candidate / newly deployed rule)
 try:
     lib.run_alert_checks()
-except Exception:  # noqa: BLE001
+except Exception:  
     pass
 
 # While the scheduler is on, auto-refresh so new runs / candidates / status show up
@@ -60,7 +54,7 @@ if lib.get_scheduler_state()["enabled"]:
 
 
 def _save_alert_settings() -> None:
-    """Persist the notification toggles to state/alerts.json (fired on_change)."""
+    # Persist the notification toggles to state/alerts.json (fired on_change)
     lib.set_alert_settings(
         enabled=st.session_state.alrt_enabled,
         attack=st.session_state.alrt_attack,
@@ -69,12 +63,12 @@ def _save_alert_settings() -> None:
 
 
 def _save_scheduler() -> None:
-    """Persist the auto-generate toggle to state/scheduler.json (fired on_change)."""
+    # Persist the auto-generate toggle to state/scheduler.json (fired on_change)
     lib.set_scheduler_enabled(st.session_state.sched_enabled)
 
 
 def render_rail() -> None:
-    """The left navigation rail: brand, clickable nav, Docker status, version."""
+    # The left navigation rail: brand, clickable nav, Docker status, version
     with st.container(key="rail"):
         st.markdown(f"""
           <div class="brand">
@@ -113,7 +107,7 @@ def render_rail() -> None:
           </div>
         """, unsafe_allow_html=True)
 
-        # Telegram — notification settings (only shown once a token is configured)
+        # Telegram — notification settings
         if lib.telegram_configured():
             _s = lib.get_alert_settings()
             for _key, _flag in (("alrt_enabled", "enabled"), ("alrt_attack", "attack"),

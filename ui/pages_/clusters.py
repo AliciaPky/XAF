@@ -1,19 +1,4 @@
-"""Clusters — browse the attack clusters the pipeline discovered, drill into each
-one's captured payloads.
-
-Wired to system data, not demo fixtures. Everything shown comes from lib.py:
-  • The clusters themselves and their member payloads (lib.load_cluster_payloads),
-    sourced from output/cluster<N>_payloads.txt or derived from the clustered CSV.
-  • Per-cluster family / endpoint / block rate, aggregated from the captured
-    attacks (lib.load_attacks — the clustered_attacks.csv rows).
-  • A human signature label from the generator's own classifier
-    (lib.cluster_signature_label).
-
-Deploy status is deliberately NOT shown here — a cluster is just a grouping of
-attack traffic; whether a rule for it is drafted/live belongs to Rule Approval.
-
-"Open in Rule Approval" hands the selected cluster to the Rule Approval page via the
-shared session-state router in app.py.
+"""Clusters — browse the attack clusters the pipeline discovered, drill into each one's captured payloads.
 """
 
 import html
@@ -99,7 +84,7 @@ def _card_html(cid: int, r: dict, selected: bool) -> str:
 
 
 def _cluster_rows() -> dict[int, dict]:
-    """Build the per-cluster view model, keyed by cluster id (noise cluster -1
+    """Build the per-cluster view model, based on cluster id (noise cluster -1
     excluded). Payloads come from lib.load_cluster_payloads; family / endpoint /
     block rate are aggregated from the captured attacks when available."""
     payloads_by_cluster = lib.load_cluster_payloads()
@@ -146,12 +131,7 @@ def _cluster_rows() -> dict[int, dict]:
 
 
 def _open_in_approval(cid: int) -> None:
-    """Jump to the Rule Approval page (the one place every rule lives) and preselect
-    this cluster's rule if it has one. Resets the filter to All so the rule is visible
-    regardless of its state."""
-    # Hand the target cluster to Rule Approval, which resolves it to the concrete
-    # queue item (rule IDs aren't stable — the generator reassigns them — so we
-    # preselect by cluster, not id). See rule_approval.render().
+    # Jump to the Rule Approval page with the selected cluster pre-loaded
     st.session_state.ra_sel_cluster = cid
     st.session_state.ra_filter = "All"
     st.session_state.page = "Rule Approval"
@@ -166,7 +146,7 @@ def render() -> None:
 
     rows = _cluster_rows()
 
-    # ── empty state: offer to run clustering ──
+    # -- empty state: offer to run clustering --
     if not rows:
         st.info("No clusters yet. Clustering groups the captured attacks by "
                 "behavioural similarity (DBSCAN) into families the generator can "
@@ -190,7 +170,7 @@ def render() -> None:
     if st.session_state.cl_sel not in rows:
         st.session_state.cl_sel = ids[0]
 
-    # ── cluster grid (3 across) ──
+    # -- cluster grid (3 across) --
     st.markdown('<div class="eyebrow" style="margin:0 0 6px 2px;">'
                 'ATTACK CLUSTERS — click to inspect</div>', unsafe_allow_html=True)
     with st.container(key="cl_grid"):
@@ -208,7 +188,7 @@ def render() -> None:
 
     st.write("")
 
-    # ── detail panel ──
+    # -- detail panel --
     cid = st.session_state.cl_sel
     r = rows[cid]
     fcolor = FAMILY_COLORS.get(r["family"], MUTED)

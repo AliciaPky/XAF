@@ -1,18 +1,4 @@
 """Attack Simulator — fire real payloads at the live WAF and see the verdict.
-
-Wired to system data, not fixtures. Everything comes from lib.py:
-  • The attack library is lib.attack_catalog() — the SAME payloads the project's
-    attackScript*.py generators fire, grouped by attack type → family (+ benign),
-    so the simulator's ammunition is a single source of truth with the pipeline.
-  • Launch actually sends the payload through nginx-modsec via lib.fire_payload()
-    over the mapped vector (endpoint + param). The verdict is the WAF's real
-    response: HTTP 403 == BLOCKED, anything else == UNCAUGHT. Latency is the real
-    round-trip time; a transport error (WAF down) is surfaced as an ERROR verdict.
-  • A block is attributed to the deployed custom rule that matches it
-    (lib.attribute_block), and the "N rules deployed" pill is lib.count_deployed_rules().
-
-Nothing here is simulated — remove the WAF and every row goes to ERROR rather
-than lying with a synthetic 200/403.
 """
 
 import datetime as dt
@@ -28,8 +14,7 @@ from theme import (AMBER, BLUE, CARD, FAINT, GREEN, LINE, MUTED, RED, TEAL,
 CODE = "#0a0d13"
 BORDER = "#1e2531"
 
-# Attack type display label -> catalog key. The catalog also fixes the vector
-# (endpoint) each type is fired through, so picking a type sets the target too.
+# Attack type display label -> catalog key
 TYPES = {"SQLi": "sqli", "XSS": "xss", "SSTI": "ssti"}
 TYPE_COLORS = {"sqli": BLUE, "xss": GREEN, "ssti": RED}
 
@@ -66,12 +51,12 @@ _CSS = f"""
 
 @st.cache_data(ttl=30)
 def _catalog() -> dict:
-    """The payload catalog, cached — reads and imports the attack scripts once."""
+    # The payload catalog, cached — reads and imports the attack scripts once
     return lib.attack_catalog()
 
 
 def _launch() -> None:
-    """Fire the current payload through the live WAF and record the real verdict."""
+    # Fire the current payload through the live WAF and record the real verdict
     text = (st.session_state.get("sim_payload") or "").strip()
     if not text:
         return
@@ -118,7 +103,7 @@ def render() -> None:
 
     n_deployed = lib.count_deployed_rules()
 
-    # ── header ──
+    # -- header ──
     h_l, h_r = st.columns([2.4, 1])
     with h_l:
         st.markdown(page_header("Attack Simulator",
@@ -135,7 +120,7 @@ def render() -> None:
 
     lib_col, con_col = st.columns([1.15, 2.6], gap="medium")
 
-    # ── attack library (real catalog: type → families → payloads + benign) ──
+    # -- attack library (real catalog: type → families → payloads + benign) --
     with lib_col:
         st.markdown('<div class="eyebrow" style="margin:0 0 8px 2px;">ATTACK LIBRARY</div>',
                     unsafe_allow_html=True)
@@ -158,7 +143,7 @@ def render() -> None:
                         ss.sim_payload = payload
                         st.rerun()
 
-    # ── console ──
+    # -- console --
     with con_col:
         st.markdown(
             f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:16px 16px 0 0;'
@@ -179,7 +164,7 @@ def render() -> None:
             with st.container(key="sim_launch"):
                 st.button("▶  Launch Attack", on_click=_launch, use_container_width=True)
 
-        # ── latest verdict ──
+        # -- latest verdict --
         if ss.sim_log:
             last = ss.sim_log[0]
             if last["status"] == "blocked":
@@ -216,7 +201,7 @@ def render() -> None:
               </div>
             """, unsafe_allow_html=True)
 
-        # ── session stats (real outcomes only; errors excluded from the rate) ──
+        # -- session stats (real outcomes only; errors excluded from the rate) --
         fired = len(ss.sim_log)
         blocked = sum(1 for e in ss.sim_log if e["status"] == "blocked")
         uncaught = sum(1 for e in ss.sim_log if e["status"] == "uncaught")
@@ -231,7 +216,7 @@ def render() -> None:
                          f'<div class="val" style="color:{color};">{val}</div></div>',
                          unsafe_allow_html=True)
 
-        # ── session log ──
+        # -- session log --
         st.write("")
         head_l, head_r = st.columns([3, 1])
         head_l.markdown('<div style="font-size:14px;font-weight:600;padding-top:4px;">Session Log</div>',

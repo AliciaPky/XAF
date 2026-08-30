@@ -1,11 +1,9 @@
 """
-XAF — Deliberately Vulnerable LMS (test target)
-================================================
+Vulnerable LMS (test target)
 A minimal Learning Management System used as the WAF test target.
 
 !!! INTENTIONALLY VULNERABLE !!!
-This app exists ONLY to evaluate the XAF adaptive WAF. Do NOT deploy it on a
-public network without the WAF in front and inbound restricted to your own IP.
+This app exists ONLY to evaluate the XAF adaptive WAF. 
 
 Injection sinks:
   SQLi  — POST /login (username, password), GET /courses?q=
@@ -40,7 +38,7 @@ DB_CONFIG = {
 
 
 def get_db():
-    """Open a fresh connection. MySQL may not be ready at boot, so retry."""
+    # Open a fresh connection. MySQL may not be ready at boot, so retry
     last_err = None
     for _ in range(30):
         try:
@@ -50,10 +48,7 @@ def get_db():
             time.sleep(2)
     raise last_err
 
-
-# --------------------------------------------------------------------------- #
 # Templates (kept inline to keep the target self-contained)
-# --------------------------------------------------------------------------- #
 PAGE = """
 <!doctype html>
 <title>APU LearnHub</title>
@@ -156,9 +151,7 @@ def render(body, **ctx):
     return render_template_string(PAGE, body=inner, user=session.get("username"), **ctx)
 
 
-# --------------------------------------------------------------------------- #
 # Routes
-# --------------------------------------------------------------------------- #
 @app.route("/")
 def index():
     if "username" in session:
@@ -173,7 +166,7 @@ def login():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
 
-        # !!! VULNERABLE: user input concatenated straight into SQL.
+        # VULNERABLE: user input concatenated straight into SQL.
         # This is the primary SQL injection sink the WAF must protect.
         query = (
             "SELECT id, username, full_name, role FROM users "
@@ -240,7 +233,7 @@ def courses():
                 (session["user_id"],),
             )
             grades = cur.fetchall()
-            # !!! VULNERABLE: secondary SQLi sink in the search filter.
+            # VULNERABLE: secondary SQLi sink in the search filter.
             cur.execute(
                 "SELECT code, title, instructor FROM courses "
                 "WHERE title LIKE '%%%s%%'" % q
@@ -277,7 +270,7 @@ def xss_search():
     conn = get_db()
     try:
         with conn.cursor() as cur:
-            # Safe parameterised query — the XSS sink is the unescaped reflection of q above.
+            # Safe parameterised query: the XSS sink is the unescaped reflection of q above.
             cur.execute(
                 "SELECT code, title, instructor FROM courses WHERE title LIKE %s",
                 (f"%{q}%",),
@@ -295,7 +288,7 @@ def feedback():
     result = None
     if request.method == "POST":
         message = request.form.get("message", "")
-        # !!! VULNERABLE: user-supplied string rendered as a Jinja2 template.
+        # VULNERABLE: user-supplied string rendered as a Jinja2 template.
         # This is the SSTI sink the WAF must protect.
         try:
             result = render_template_string(message)

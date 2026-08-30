@@ -41,7 +41,7 @@ def _display_family(raw) -> str:
 
 
 def _validation_label(item: dict) -> tuple[str, str]:
-    """(text, colour) for the card's validation status line."""
+    # (text, colour) for the card's validation status line
     if item["valid"] is True:
         return "PASSED", GREEN
     if item["valid"] is False:
@@ -50,7 +50,7 @@ def _validation_label(item: dict) -> tuple[str, str]:
 
 
 def _status_pill(item: dict) -> tuple[str, str, str]:
-    """(label, bg, fg) for the rule-state pill."""
+    # (label, bg, fg) for the rule-state pill
     if item["live"]:
         if item.get("disabled"):
             return "ROLLED BACK", "rgba(251,191,36,.14)", AMBER
@@ -61,7 +61,7 @@ def _status_pill(item: dict) -> tuple[str, str, str]:
 
 
 def _state_of(item: dict) -> str:
-    """One of 'pending' / 'live' / 'rolled back' / 'rejected' — used by the filter."""
+    # One of 'pending' / 'live' / 'rolled back' / 'rejected' — used by the filter.
     if item["live"]:
         return "rolled back" if item.get("disabled") else "live"
     return item["status"]
@@ -127,10 +127,6 @@ def render() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
     st.markdown(cards.card_css("ra_queue"), unsafe_allow_html=True)
 
-    # The control panel for every rule's deployment state: pending candidates
-    # (rules/experiments, awaiting approval) AND live rules (rules/custom, which can
-    # be rolled back or restored). Deduped by ID — a promoted candidate shows once,
-    # as live.
     live = lib.load_finalized_rules()          # in rules/custom (has `disabled`)
     cand = lib.load_candidate_rules()          # in rules/experiments (has `status`)
     live_ids = {r["id"] for r in live}
@@ -159,7 +155,7 @@ def render() -> None:
     n_live    = sum(1 for q in queue if q["live"] and not q.get("disabled"))
     n_rolled  = sum(1 for q in queue if q["live"] and q.get("disabled"))
 
-    # ── header: title + state pills ──
+    # -- header: title + state pills --
     head_l, head_r = st.columns([2, 1.4])
     with head_l:
         st.markdown(page_header("Rule Approval",
@@ -177,7 +173,7 @@ def render() -> None:
             f'<span style="width:6px;height:6px;border-radius:50%;background:{AMBER};"></span>{n_rolled} rolled back</span>'
             f'</div>', unsafe_allow_html=True)
 
-    # ── empty state: offer to run the generator ──
+    # -- empty state: offer to run the generator --
     if not queue:
         st.info("No candidate or live rules yet. The generator turns each uncaught attack "
                 "cluster into a validated ModSecurity rule for sign-off.")
@@ -196,7 +192,7 @@ def render() -> None:
                 st.code(res["stderr"] or res["stdout"] or "no output")
         return
 
-    # ── filter (labels stay stable so changing counts don't reset the choice) ──
+    # -- filter (labels stay stable so changing counts don't reset the choice) --
     FILTERS = {"All": None, "Pending": "pending", "Live": "live",
                "Rolled back": "rolled back", "Rejected": "rejected"}
     choice = st.segmented_control("filter", list(FILTERS), default="All",
@@ -221,7 +217,7 @@ def render() -> None:
 
     queue_col, detail_col = st.columns([1.1, 2.4], gap="medium")
 
-    # ── review queue ──
+    # -- review queue --
     with queue_col:
         st.markdown('<div class="eyebrow" style="margin:0 0 8px 2px;">REVIEW QUEUE</div>',
                     unsafe_allow_html=True)
@@ -243,7 +239,7 @@ def render() -> None:
                         st.session_state.ra_sel = item["_uid"]
                         st.rerun()
 
-    # ── review detail ──
+    # -- review detail --
     with detail_col:
         item = next(q for q in visible if q["_uid"] == st.session_state.ra_sel)
         status = item["status"]

@@ -9,4 +9,4 @@ output/prompts/
 .env
 .env.*
 !.env.example
-ui/.streamlit/secrets.toml
+ui/.streamlit/

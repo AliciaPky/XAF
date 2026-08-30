@@ -23,7 +23,7 @@ PROVIDER = "google"   # must match the [auth.google] section in secrets.toml
 
 CARD_HEIGHT = 460       # iframe height (px); button overlay is tuned against this
 
-# ── the visual card (self-contained HTML/CSS/JS, empty slot where button lands)─
+# --the visual card (self-contained HTML/CSS/JS, empty slot where button lands)--
 HTML = """
 <!DOCTYPE html>
 <html>
@@ -91,7 +91,7 @@ HTML = """
 </div>
 
 <script>
-  // ── canvas node network (visual only) ──
+  // -- canvas node network (visual only) --
   const cv = document.getElementById('net'), ctx = cv.getContext('2d');
   let w, h, dpr, nodes = [];
   function resize(){

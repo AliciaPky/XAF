@@ -3,8 +3,8 @@
 # does NOT load that dir). Approve them in the console's Rule Approval gate to promote
 # them into rules/custom/ and go live. Single-model workflow — settled on gpt-5.4-mini.
 #
-# Reuses generate_modsec_rules_llm.py unchanged; the key is taken from the shell
-# env or, if unset, loaded from .env (same file the generator reads).
+# Reuses generate_modsec_rules_llm.py unchanged, the key is taken from the shell env or,
+# if unset, loaded from .env (same file the generator reads).
 #
 # Usage:
 #   $env:OPENAI_API_KEY = "sk-..."; .\generator\run_openai.ps1
@@ -17,15 +17,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# --- Clear any stray base URL / placeholder key so we always target OpenAI ---
+# Clear any stray base URL / placeholder key so we always target OpenAI
 if (Test-Path env:XAF_BASE_URL) { Remove-Item env:XAF_BASE_URL }
 if ($env:OPENAI_API_KEY -eq "ollama") { Remove-Item env:OPENAI_API_KEY }
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot  = Split-Path -Parent $scriptDir
 
-# --- If the key isn't set in this shell, load it from .env (same file the
-#     Python generator reads via load_dotenv). Keeps both runners consistent. ---
+# If the key isn't set in this shell, load it from .env
 if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
     $envFile = Join-Path $repoRoot ".env"
     if (Test-Path $envFile) {
@@ -38,7 +37,6 @@ if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
     }
 }
 
-# --- Require a real key (from the shell or from .env) ---
 if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY) -or
     $env:OPENAI_API_KEY -eq "ollama" -or
     $env:OPENAI_API_KEY -eq "sk-your-key-here") {

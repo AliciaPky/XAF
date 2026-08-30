@@ -1,17 +1,13 @@
 """Attack Monitor — detailed request-level log for the current pipeline run.
 
 Every row is read live from the pipeline output via lib.load_attacks()
-(output/clustered_attacks.csv, falling back to output/parsed_logs.json), so
+(output/clustered_attacks.csv, falling back to output/parsed_logs.json)
 this page reflects exactly what the parser + clustering produced.
 
 Controls:
   • search keyword + status buttons + date-range filter narrow the table
   • the table paginates 10 rows at a time
-  • Export CSV opens a popover where you pick a keyword + status for the export,
-    so you can download a different slice than what's on screen
-
-The demo's Source IP / Confidence columns had no backing in the parsed data, so
-they're replaced by the real Rule ID (the CRS rule that matched each request).
+  • Export CSV download data based on filter
 """
 
 import datetime
@@ -27,16 +23,15 @@ from theme import (AMBER, BLUE, FAINT, GREEN, MUTED, RED, TEAL, TEXT, VIOLET,
 
 PAGE_SIZE = 10
 
-# Family (attack type) -> colour. Keyed uppercase to match the display label;
-# families the clustering step didn't tag fall back to MUTED.
+# Family (attack type) -> colour
+# Uppercase to match the display label
 FAMILY_COLORS = {"SQLI": BLUE, "XSS": GREEN, "SSTI": RED,
                  "LFI": AMBER, "RCE": VIOLET, "XXE": TEAL}
 
-# "bypassed" on disk means CRS didn't catch it — show it as UNCAUGHT in the UI.
+# "bypassed" = CRS didn't catch it: show as UNCAUGHT in UI
 STATUS_DISPLAY = {"blocked": "BLOCKED", "bypassed": "UNCAUGHT"}
 
-# Page-specific CSS for the log table. The global theme (theme.inject_css) is
-# already loaded by app.py; these classes are only used here.
+# Page-specific CSS for the log table. The global theme is already loaded by app.py
 _TABLE_CSS = f"""
 <style>
   .stat {{ background:#10141d; border:1px solid #1e2531; border-radius:14px;
@@ -73,9 +68,7 @@ _TABLE_CSS = f"""
 
 @st.cache_data(ttl=5)
 def load_monitor_df() -> pd.DataFrame:
-    """Read the parsed attacks and shape them into display-ready rows, newest
-    first. Columns: date, time, status, uri, payload, family, cluster, rule_id
-    (+ a hidden _dt datetime used for sorting and the date filter)."""
+    # Read the parsed attacks and shape them into display-ready rows, newest first
     df = lib.load_attacks()
     if df.empty:
         return df
@@ -125,7 +118,7 @@ def _apply_filters(df: pd.DataFrame, query: str, status: str,
 
 
 def _csv_bytes(df: pd.DataFrame) -> bytes:
-    """CSV of the visible columns only (drop the internal _dt helper)."""
+    # CSV of the visible columns only
     cols = [c for c in df.columns if not c.startswith("_")]
     return df[cols].to_csv(index=False).encode("utf-8-sig")
 
@@ -135,14 +128,14 @@ def render() -> None:
 
     df = load_monitor_df()
 
-    # ── header row: title + Export CSV (moved up, top-right) ──
+    # header row: title + Export CSV (moved up, top-right)
     h1, h2 = st.columns([3.4, 1])
     with h1:
         st.markdown(page_header("Attack Monitor",
                                 "Detailed request log for the current pipeline run"),
                     unsafe_allow_html=True)
     with h2:
-        # Filled in after the view is computed below — exports every row the
+        # Filled in after the view is computed below: exports every row the
         # active filters produce (all pages of the table), not just this page.
         export_slot = st.empty()
 
@@ -155,7 +148,7 @@ def render() -> None:
     blocked  = int((df["status"] == "BLOCKED").sum())
     uncaught = int((df["status"] == "UNCAUGHT").sum())
 
-    # ── stat strip ──
+    # -- stat strip --
     for col, (lbl, val, color) in zip(
             st.columns(3),
             [("Total Events", total, TEXT), ("Blocked", blocked, GREEN),
@@ -169,7 +162,7 @@ def render() -> None:
 
     st.write("")
 
-    # ── filter bar: search | date range | status buttons ──
+    # -- filter bar: search | date range | status buttons --
     dts = df["_dt"].dropna()
     if not dts.empty:
         min_d, max_d = dts.min().date(), dts.max().date()
@@ -196,8 +189,8 @@ def render() -> None:
 
     view = _apply_filters(df, query, status, (start_d, end_d))
 
-    # ── Export CSV — the full filtered table (every page), rendered into the
-    #     placeholder we reserved in the header row ──
+    # -- Export CSV — the full filtered table (every page), rendered into the
+    #     placeholder we reserved in the header row --
     export_slot.download_button(
         "⬇  Export CSV",
         data=_csv_bytes(view) if not view.empty else b"",
@@ -206,7 +199,7 @@ def render() -> None:
         use_container_width=True,
         disabled=view.empty)
 
-    # ── pagination (10 rows/page); reset to page 1 whenever the filters change ──
+    # -- pagination (10 rows/page), reset to page 1 whenever the filters change --
     n_view = len(view)
     n_pages = max(1, math.ceil(n_view / PAGE_SIZE))
     sig = (query.strip().lower(), status, str(start_d), str(end_d))
@@ -217,7 +210,7 @@ def render() -> None:
     lo = (page - 1) * PAGE_SIZE
     page_view = view.iloc[lo:lo + PAGE_SIZE]
 
-    # ── log table ──
+    # -- log table --
     header = (
         '<div class="grid thead">'
         '<div>Date</div><div>Time</div><div>Status</div>'
@@ -260,7 +253,7 @@ def render() -> None:
 
     st.markdown(f'<div class="tbl">{header}{body}{foot}</div>', unsafe_allow_html=True)
 
-    # ── pager controls ──
+    # -- pager controls --
     p1, p2, p3 = st.columns([1, 2, 1])
     with p1:
         prev = st.button("‹ Prev", use_container_width=True, disabled=page <= 1)

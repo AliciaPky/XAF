@@ -6,16 +6,15 @@ import urllib.parse
 INPUT_FILE  = "modsec-logs/audit.log"
 OUTPUT_FILE = "output/parsed_logs.json"
 
-# Messages emitted by rules WE generate; excluding them stops the system from
+# Messages emitted by generated rules but excludes them stops the system from
 # training on its own output (feedback contamination).
 GENERATED_RULE_MSGS = {"AUTO_GENERATED_RULE", "CUSTOM_RULE_TRIGGERED"}
 
 # Response code that means the WAF blocked the request.
 BLOCK_STATUS = 403
 
-
 def deep_unquote(value, max_passes=3):
-    """URL-decode repeatedly to defeat double/triple encoding (%2527 -> ' )."""
+    # URL-decode repeatedly to defeat double/triple encoding (%2527 -> ' )
     if value is None:
         return None
     prev = value
@@ -130,7 +129,7 @@ def values_from_matched_data(messages):
 
 
 def header_value(headers, name):
-    """Case-insensitive header lookup."""
+    # Case-insensitive header lookup
     if not isinstance(headers, dict):
         return None
     for k, v in headers.items():

@@ -23,7 +23,7 @@ from reportlab.platypus import (HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
 import lib
 
-# ── palette (print-friendly) ─────────────────────────────────────────────────
+# --palette (print-friendly)--
 BLUE = colors.HexColor("#2563eb")
 DARK = colors.HexColor("#111827")
 MUTED = colors.HexColor("#6b7280")
@@ -85,8 +85,8 @@ def _colored(text, color):
 
 
 def _kpi_band(items):
-    """items: list of (label, value, color). Each cell stacks label over value,
-    laid out 4 per row."""
+    # items: list of (label, value, color)
+    # Each cell stacks label over value, laid out 4 per row
     cells = []
     for label, value, color in items:
         vstyle = ParagraphStyle("kv", parent=KVAL, textColor=color)
@@ -112,14 +112,14 @@ def _verdict(valid):
 
 
 def build_pdf_report() -> bytes:
-    """Assemble the report from live pipeline data and return PDF bytes."""
+    # Assemble the report from live pipeline data and return PDF bytes
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, title="XAF Security Report",
                             leftMargin=16 * mm, rightMargin=16 * mm,
                             topMargin=15 * mm, bottomMargin=15 * mm)
     story = []
 
-    # ── header ──
+    # -- header --
     df = lib.load_attacks()
     docker = lib.docker_status()
     waf = "running" if docker.get("nginx-modsec") == "up" else "not reachable"
@@ -131,7 +131,7 @@ def build_pdf_report() -> bytes:
     story.append(HRFlowable(width="100%", thickness=1, color=LINE))
     story.append(Spacer(1, 8))
 
-    # ── KPI summary ──
+    # -- KPI summary --
     m = lib.attack_metrics(df) if not df.empty else {"total": 0, "blocked": 0,
                                                      "bypassed": 0, "clusters": 0}
     total = m.get("total", 0)
@@ -153,7 +153,7 @@ def build_pdf_report() -> bytes:
         ("Auto-gen runs", sch.get("runs", 0), DARK),
     ]))
 
-    # ── attack-type breakdown ──
+    # -- attack-type breakdown --
     if not df.empty and "family" in df.columns:
         story.append(Paragraph("Attack types", H2))
         vc = df["family"].astype(str).str.lower().value_counts()
@@ -163,7 +163,7 @@ def build_pdf_report() -> bytes:
         story.append(_table(["Family", "Count", "Share"], rows,
                             [70 * mm, 40 * mm, 40 * mm], aligns={1: "CENTER", 2: "CENTER"}))
 
-    # ── recent attacks ──
+    # -- recent attacks --
     if not df.empty:
         story.append(Paragraph("Recent attacks", H2))
         disp = {"blocked": "BLOCKED", "bypassed": "UNCAUGHT"}
@@ -181,7 +181,7 @@ def build_pdf_report() -> bytes:
         story.append(_table(["Timestamp", "Verdict", "URI", "Payload", "Rule"], rows,
                             [22 * mm, 20 * mm, 34 * mm, 66 * mm, 18 * mm]))
 
-    # ── clusters ──
+    # -- clusters --
     payloads = lib.csv_cluster_payloads()
     if payloads:
         fams = lib.cluster_families()
@@ -202,7 +202,7 @@ def build_pdf_report() -> bytes:
                             [18 * mm, 18 * mm, 20 * mm, 74 * mm, 20 * mm],
                             aligns={2: "CENTER", 4: "CENTER"}))
 
-    # ── rule inventory ──
+    # -- rule inventory --
     story.append(Paragraph("Rule inventory", H2))
 
     def _rule_rows(items):

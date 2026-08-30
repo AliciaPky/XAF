@@ -22,8 +22,7 @@ FAMILY_SIGNATURES = {
 
 
 def classify_family(payload):
-    """Return 'sqli' | 'xss' | 'ssti', or None for benign/unclassified.
-    SSTI/XSS are checked before SQLi so mixed payloads aren't mislabelled."""
+    # Return 'sqli' | 'xss' | 'ssti', or None for benign/unclassified
     s = (payload or "").lower()
     for family in ("ssti", "xss", "sqli"):
         if any(tok in s for tok in FAMILY_SIGNATURES[family]):
@@ -78,7 +77,7 @@ if df.empty:
     print("No attack payloads to cluster after benign filtering.")
     raise SystemExit
 
-# Cluster each family separately; offset labels so cluster ids stay globally unique.
+# Cluster each family separately
 labels = pd.Series(-1, index=df.index, dtype=int)
 next_base = 0
 for family, group in df.groupby("family"):

@@ -30,15 +30,15 @@ CREATE TABLE IF NOT EXISTS enrollments (
 
 INSERT INTO users (username, password, full_name, role) VALUES
     ('admin',    'S3cr3tAdmin!', 'System Administrator', 'admin'),
-    ('student1', 'pass123',      'Aisha Rahman',         'student'),
-    ('student2', 'qwerty',       'Marcus Lee',           'student'),
+    ('student1', 'pass123',      'Brendy Yap',         'student'),
+    ('student2', 'qwerty',       'Sash Shankar',           'student'),
     ('lecturer', 'teach2026',    'Dr. Hanis Jenalis',    'lecturer');
 
 INSERT INTO courses (code, title, instructor) VALUES
     ('CS101', 'Introduction to Programming', 'Dr. Hanis Jenalis'),
     ('CS205', 'Database Systems',            'Dr. Hanis Jenalis'),
     ('CS310', 'Web Application Security',    'Dr. Hanis Jenalis'),
-    ('CS320', 'Cloud Computing',             'Dr. Lim Wei');
+    ('CS320', 'Cloud Computing',             'Dr. Yusof Akmal');
 
 INSERT INTO enrollments (student_id, course_id, grade) VALUES
     (2, 1, 'A'),
