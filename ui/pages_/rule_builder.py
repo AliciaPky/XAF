@@ -19,6 +19,13 @@ def render() -> None:
                             "Craft your own ModSecurity rule and deploy it to the live WAF"),
                 unsafe_allow_html=True)
 
+    # Deploy result from the previous run — the deploy handler stashes it here and
+    # reruns (to reset the form), so the message must be rendered AFTER the rerun or
+    # it flashes and vanishes. This is the "successfully deployed" banner.
+    deploy_result = st.session_state.pop("rb_deploy_result", None)
+    if deploy_result:
+        (st.success if deploy_result["ok"] else st.warning)(deploy_result["msg"])
+
     payloads_by_cluster = lib.csv_cluster_payloads()
     if not payloads_by_cluster:
         st.info("Need at least one attack cluster to validate against. Run the parser + "
@@ -75,9 +82,13 @@ def render() -> None:
             lib.deploy_manual_rule(res["cleaned"], cluster)
             with st.spinner("Reloading ModSecurity…"):
                 rl = lib.reload_modsecurity()
-            (st.success if rl["ok"] else st.warning)(
-                "Crafted rule deployed to the live WAF." if rl["ok"]
-                else f"Wrote rule to manual.conf, but WAF reload failed: {rl['stderr']}")
+            msg = ("Crafted rule deployed to the live WAF." if rl["ok"]
+                   else f"Wrote rule to manual.conf, but WAF reload failed: {rl['stderr']}")
+            # Persist the outcome across the rerun below (a bare st.success here would be
+            # wiped by st.rerun before the user sees it); the banner is re-rendered at the
+            # top of render(). Toast too, so it also shows instantly.
+            st.session_state["rb_deploy_result"] = {"ok": rl["ok"], "msg": msg}
+            st.toast(msg, icon="✅" if rl["ok"] else "⚠️")
             for k in ("rb_manual_id", "rb_rule", "rb_review"):
                 st.session_state.pop(k, None)
             st.rerun()

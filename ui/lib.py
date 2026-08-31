@@ -496,7 +496,12 @@ def llm_review_rule(rule_text: str, payloads: list[str]) -> dict:
 
 def deploy_manual_rule(cleaned_rule: str, cluster: int) -> Path:
     """Append a validated, analyst-crafted rule to manual.conf (tagged with its
-    cluster so it shows in the deployed list and can be rolled back by ID)."""
+    cluster so it shows in the deployed list and can be rolled back by ID).
+
+    A manual rule is ADDITIVE: it does NOT supersede the generated rule for its
+    cluster — the two coexist (the analyst's rule adds coverage alongside the AI's).
+    A live generated rule for the same cluster is left in place; approving a generated
+    rule likewise never deletes a manual one (_remove_cluster_rules skips manual.conf)."""
     MANUAL_CONF.parent.mkdir(parents=True, exist_ok=True)
     header = "# XAF manual (analyst-crafted) rules\n\n"
     existing = MANUAL_CONF.read_text(encoding="utf-8") if MANUAL_CONF.exists() else header
@@ -1041,9 +1046,11 @@ def rule_is_live(rule_text: str) -> bool:
 
 def _remove_cluster_rules(cluster, subgroup=None) -> list[str]:
     """Strip every live SecRule block tagged for this (cluster, subgroup) out of the
-    confs in rules/custom, and clear those IDs from the rolled-back state. Returns the
-    removed rule IDs. Used when an updated rule supersedes the old one, so the cluster
-    ends up with exactly ONE live rule — no duplicate IDs, no stale rule left firing."""
+    generated confs in rules/custom, and clear those IDs from the rolled-back state.
+    Returns the removed rule IDs. Used when an updated rule supersedes the old one, so
+    the cluster ends up with exactly ONE live GENERATED rule — no duplicate IDs, no
+    stale rule left firing. Analyst-crafted rules (manual.conf) are left untouched: they
+    are independent of the generator's lifecycle and a supersede must never delete them."""
     target = cluster_key(cluster, subgroup)
     if not target:
         return []
@@ -1061,6 +1068,8 @@ def _remove_cluster_rules(cluster, subgroup=None) -> list[str]:
     for conf in deployed_confs():
         if conf == DISABLED_CONF:          # only SecRuleRemoveById lines — nothing to strip
             continue
+        if conf == MANUAL_CONF:            # analyst-crafted rules are independent — never
+            continue                       # let a generated-rule supersede delete them
         original = conf.read_text(encoding="utf-8")
         stripped = RULE_BLOCK_RE.sub(_repl, original)
         if stripped != original:

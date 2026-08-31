@@ -301,8 +301,7 @@ def render() -> None:
               <span style="width:10px;height:10px;border-radius:3px;background:{fcolor};box-shadow:0 0 10px {fcolor};"></span>
               <span style="font-size:18px;font-weight:600;">{cluster_lbl} · {item['family']}</span>
               <span class="ra-badge" style="background:rgba(79,157,255,.12);color:#8fc0ff;">
-                VALIDATION {verdict}</span>
-              {update_badge}
+                VALIDATION {verdict}</span> {update_badge}
               <span style="flex:1;"></span>
               <span class="mono" style="font-size:12px;color:{FAINT};">{rid_txt}</span>
             </div>

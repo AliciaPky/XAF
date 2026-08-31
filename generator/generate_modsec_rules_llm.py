@@ -181,6 +181,7 @@ def normalize_actions(rule):
     if i >= len(rule):
         return rule
     prefix, actions = rule[:i + 1], rule[i + 1:].strip()
+    actions = re.sub(r"^\\\s*", "", actions).strip()
     if not actions or actions.startswith('"'):
         return rule
     return f'{prefix} "{",".join(_split_actions(actions))}"'
